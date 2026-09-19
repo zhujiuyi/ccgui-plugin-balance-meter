@@ -1,0 +1,55 @@
+# 发版流水线（Obsidian 同款约定：tag = manifest version）。
+# 推 tag 触发：校验 tag↔version → 本地预检 → 构建 → 汇总 checksums → 发 Release。
+# 产物清单：main.js / manifest.json / checksums.txt（本插件样式内联在 main.js，
+# 不产出 styles.css；市场规范里 styles.css 是可选项）。
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check tag matches manifest version
+        run: node scripts/validate-manifest.mjs --tag "$GITHUB_REF_NAME"
+
+      - name: Build (artifacts into ./dist)
+        env:
+          CCGUI_PLUGIN_OUT_DIR: dist
+        run: pnpm build
+
+      - name: Validate built artifacts
+        run: pnpm validate:dist
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum main.js manifest.json > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub Release with plugin artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/main.js
+            dist/manifest.json
+            dist/checksums.txt

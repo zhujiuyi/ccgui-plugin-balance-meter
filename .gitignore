@@ -1,0 +1,15 @@
+# 依赖
+node_modules/
+
+# 构建产物（本地开发写到 %TEMP%，CI 用 CCGUI_PLUGIN_OUT_DIR=dist 写到这里）
+dist/
+main.js
+styles.css
+*.minisig
+checksums.txt
+
+# 缓存/日志
+.vite/
+coverage/
+*.log
+*.tmp

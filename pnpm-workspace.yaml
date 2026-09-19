@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: set this to true or false
+# pnpm 10.16+ / 11 起，构建脚本白名单等设置从 package.json 迁到本文件。
+# esbuild 需要执行安装脚本（vite 的依赖）。
+onlyBuiltDependencies:
+  - esbuild

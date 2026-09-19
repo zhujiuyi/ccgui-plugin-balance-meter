@@ -1,0 +1,53 @@
+{
+  "id": "balance-meter",
+  "name": "余额与余量",
+  "version": "0.1.0",
+  "sdkVersion": "^0.3",
+  "minAppVersion": "1.0.5",
+  "author": "zhujiuyi",
+  "description": "按当前路由的网关地址识别供应商与计费方式，自动查询 API 余额或订阅余量；支持手动刷新与每轮对话后自动刷新，查不到时明确提示。",
+  "repo": "zhujiuyi/ccgui-plugin-balance-meter",
+  "license": "MIT",
+  "keywords": ["balance", "quota", "billing", "gateway", "provider"],
+  "tier": "js",
+  "permissions": [
+    "storage",
+    "events",
+    "ui:status-bar",
+    "ui:settings-section",
+    "ui:command",
+    "theme",
+    "exec:curl",
+    "exec:cmd",
+    "exec:sh"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "autoRefresh": {
+        "type": "boolean",
+        "title": "每轮对话后自动刷新",
+        "description": "一轮对话结束（usage://done）后自动查询一次余量。",
+        "default": true
+      },
+      "minIntervalSec": {
+        "type": "number",
+        "title": "最小刷新间隔（秒）",
+        "description": "自动刷新的节流间隔，避免频繁请求供应商接口。",
+        "default": 30
+      },
+      "homeDir": {
+        "type": "string",
+        "title": "用户目录（留空自动探测）",
+        "description": "读取各 CLI 与 ccgui 配置的根目录，如 C:\\Users\\you。留空则由插件自动探测。",
+        "default": ""
+      },
+      "extraEndpoint": {
+        "type": "string",
+        "title": "自定义余量接口（可选）",
+        "description": "优先尝试的自定义接口，支持 {base} 占位符，例如 {base}/api/user/self。",
+        "default": ""
+      }
+    }
+  }
+}
