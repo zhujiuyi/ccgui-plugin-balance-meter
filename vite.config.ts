@@ -43,6 +43,9 @@ export default defineConfig({
   build: {
     outDir: stageDir,
     emptyOutDir: true,
+    // 不压缩：市场审核偏好可读产物（也避免"压缩后参数改名"导致
+    // 索引仓 permissions 启发式扫不到 ctx.* 调用而报"权限多余"）。
+    minify: false,
     cssCodeSplit: false,
     lib: {
       entry: path.resolve(__dirname, "src/main.ts"),
