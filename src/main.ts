@@ -8,8 +8,8 @@
 // 结果是 Tailwind preflight（`* { padding: 0; border: 0 solid }`、`button { background: transparent;
 // border-radius: 0 }`，位于更高的 base 层）把插件的 padding/border/按钮底色全部盖掉。
 // 改用 `ctx.theme.injectCss` 注入：宿主该路径**不套层**，样式才真正生效。
-// 文件名为 ui.css（不叫 styles.css）：母库 .gitignore 忽略 styles.css/main.js（构建产物名），
-// 源码叫 styles.css 会被一起忽略、根本进不了版本库。
+// 文件名为 ui.css（不叫 styles.css）：仓库 .gitignore 按产物名忽略了 styles.css/main.js，
+// 源码若叫 styles.css 会被一起忽略、根本进不了版本库。
 import styles from "./ui.css?inline";
 
 import type { PluginContext } from "./ccgui-plugin";

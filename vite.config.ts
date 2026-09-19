@@ -12,7 +12,7 @@ import { defineConfig, type Plugin } from "vite";
  */
 /**
  * 产物目录：
- *  - 本地开发（母库约定）：`%TEMP%\ccgui-plugin\balance-meter\dist`，源码目录保持干净；
+ *  - 本地开发（默认）：系统临时目录下的 `ccgui-plugin/balance-meter/dist`，源码目录保持干净；
  *  - CI / 发版：用 `CCGUI_PLUGIN_OUT_DIR=dist` 覆盖，产物落在仓库内 `dist/`（.gitignore）；
  *  - 两者都没有时退到仓库内 `dist/`。
  */
