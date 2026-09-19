@@ -1,7 +1,8 @@
 # balance-meter（余额与余量）
 
-CC GUI 插件 · 独立仓库 `zhujiuyi/ccgui-plugin-balance-meter`（本仓即**源码与发版的唯一出处**，
-原开发副本在母库 `E:\ccgui-plugin\plugin-balance-meter`，已迁出）。
+CC GUI 插件 · 独立仓库 `zhujiuyi/ccgui-plugin-balance-meter`，本地路径
+`E:\ccgui-plugin\plugin-balance-meter`（`E:\ccgui-plugin` 只是容器目录，不再是仓库）。
+**本仓即源码与发版的唯一出处**（2026-09-20 从原 monorepo 拆出）。
 
 ```bash
 pnpm install
