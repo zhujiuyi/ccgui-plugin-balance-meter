@@ -103,34 +103,6 @@ const CONFIG_KEYS = {
 /** 最近一次确认到的活动引擎（KV），用于下次启动时直接对准路由。 */
 const ACTIVE_ENGINE_KEY = "activeEngine";
 
-/** 宿主持久化活动标签用的 localStorage 键（见 desktop-cc-gui
- *  src/features/chat/store/persistence.ts）。 */
-const HOST_ACTIVE_SESSION_KEY = "ccgui-next.activeSession:v1";
-const HOST_ACTIVE_SESSION_LEGACY_KEY = "ccgui-next.activeSession";
-
-/**
- * best-effort 读取宿主"当前活动标签"的引擎。
- *
- * 为什么需要：宿主只在用户点标签/选会话时发 `session://activated`，**应用启动
- * 恢复上次标签时不补发**，而插件的 init 早于任何会话事件，于是拿不到引擎、
- * 只能退到第一条路由（曾因此把 claude 的 DeepSeek 余额显示给了 codex 用户）。
- * 这里直接读宿主写在 localStorage 的活动标签兜底；读不到返回 null，不影响其它逻辑。
- */
-function readHostActiveEngine(): string | null {
-  try {
-    const storage = window.localStorage;
-    const raw =
-      storage.getItem(HOST_ACTIVE_SESSION_KEY) ??
-      storage.getItem(HOST_ACTIVE_SESSION_LEGACY_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { engine?: unknown };
-    const engine = parsed?.engine;
-    return typeof engine === "string" && engine.trim() ? engine.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
 const INITIAL: MeterState = {
   ready: false,
   home: null,
@@ -224,12 +196,13 @@ export class BalanceStore {
 
     const home = this.config.homeDir || (await detectHome(this.ctx));
     const { routes, diagnostics } = await resolveRoutes(this.ctx, home);
-    // 宿主启动恢复标签时不补发会话激活事件，故先用上次记住的引擎对准路由。
+    // 引擎来源只有两个：① 插件 KV 里记住的上次引擎；② 官方事件
+    // （`session://activated` 与 usage 载荷里的 engine）。宿主 1.0.6 起该事件
+    // 带粘性回放（上游 PR #1254），插件即便加载晚也能在订阅瞬间拿到当前会话；
+    // 更早的宿主则退化为"未确认"，等用户切标签或发一条消息后自动纠正。
     const savedEngine = await this.ctx.storage.get<string>(ACTIVE_ENGINE_KEY);
     const remembered = typeof savedEngine === "string" ? savedEngine.trim() : "";
-    // 没有记住过就现读宿主的活动标签；再不行才是"未确认"（退到第一条路由）。
-    const activeEngine = remembered || readHostActiveEngine() || this.state.activeEngine;
-    if (!remembered && activeEngine) void this.ctx.storage.set(ACTIVE_ENGINE_KEY, activeEngine);
+    const activeEngine = remembered || this.state.activeEngine;
     const currentRoute = this.pickRoute(routes, activeEngine);
 
     this.set({

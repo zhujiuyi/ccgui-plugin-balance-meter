@@ -3,6 +3,8 @@
  * 覆盖"保存自定义查询地址 → 立即用该地址查询 → 清除后回到自动探测"。
  */
 
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import type { PluginContext } from "./ccgui-plugin";
@@ -149,27 +151,21 @@ describe("BalanceStore active engine", () => {
     expect(state.snapshot?.error ?? "").toContain("kimi");
   }, 30_000);
 
-  it("reads the host's persisted active tab when no engine was remembered yet", async () => {
-    // 宿主启动恢复标签后不发 session://activated —— 插件读它写在 localStorage 的
-    // 活动标签兜底（否则首帧只能退到第一条路由，曾把 claude 的余额显示给 codex 用户）。
+  it("stays unconfirmed until the host reports an engine (no host-internal reads)", async () => {
+    // 插件不读 localStorage 等宿主内部状态（市场黑名单硬错误）。引擎只能来自
+    // 官方事件；在事件到达之前显示"未确认"，到达后立刻纠正。
     const store = new BalanceStore(makeCtx([]), copy("zh-CN"));
-    const globalScope = globalThis as { window?: unknown };
-    globalScope.window = {
-      localStorage: {
-        getItem: (key: string) =>
-          key === "ccgui-next.activeSession:v1"
-            ? JSON.stringify({ engine: "codex", sessionId: "s1", workspacePath: "w" })
-            : null,
-      },
-    };
-    try {
-      await store.init();
-    } finally {
-      delete globalScope.window;
-    }
-    expect(store.getSnapshot().activeEngine).toBe("codex");
+    await store.init();
+    expect(store.getSnapshot().engineConfirmed).toBe(false);
+    expect(store.getSnapshot().activeEngine).toBeNull();
+
+    store.onEngineSeen("codex");
     expect(store.getSnapshot().engineConfirmed).toBe(true);
     expect(store.getSnapshot().currentRoute?.routeKey).toBe(CODEX_ROUTE_KEY);
+
+    // 源码里不应再出现 localStorage 读取（市场 CI 会扫产物）
+    const source = readFileSync(new URL("./state.ts", import.meta.url), "utf8");
+    expect(source.includes("localStorage")).toBe(false);
   }, 30_000);
 });
 

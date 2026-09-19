@@ -98,7 +98,7 @@ const ZH: Copy = {
     "插件按「当前引擎实际在用的网关地址」判断供应商与计费方式：API 计费查余额，订阅计划查余量；供应商没有公开接口时，明确显示「暂时无法提供余额显示」。",
   helpUpdateTitle: "什么时候会更新",
   helpUpdateItems: [
-    "打开 CC GUI：按上次使用的引擎对准路由，立即查询一次。",
+    "打开 CC GUI：按上次使用的引擎（或宿主回放的当前会话）对准路由，立即查询一次。",
     "切换标签 / 选择会话（换了引擎）：立刻切到该引擎的路由重新查询。",
     "每轮对话结束：自动刷新一次（默认两次刷新之间至少间隔 30 秒）。",
     "手动：状态栏图标点开后的「立即刷新」、本页「刷新全部路由」、命令面板的「刷新余额与余量」。",
@@ -114,11 +114,13 @@ const ZH: Copy = {
     "读取 ~/.ccgui-next/config.json 与各引擎本地配置（claude → ~/.claude/settings.json，codex → ~/.codex/config.toml 等）。",
     "密钥只用于向该路由自己的供应商发起只读查询，不外发第三方、不写日志。",
     "因宿主的网络出口要求预先声明域名，本插件改用 exec:curl 读配置/发请求，并用 exec:cmd（Windows）或 exec:sh（macOS / Linux）定位用户目录。",
+    "不读取宿主内部状态（浏览器本地存储 / 内部 store）：当前引擎只来自官方事件。",
   ],
   helpPlatformTitle: "适用平台",
   helpPlatformItems: [
     "Windows：已实测（2026-09，cmd + 反斜杠环境）。",
     "macOS / Linux：已做跨平台适配（sh 取 $HOME、路径统一正斜杠、curl 通用参数），但尚未在真机验证；如在其它系统遇到问题请反馈。",
+    "宿主版本：启动瞬间就认对引擎依赖 `session://activated` 的粘性回放（上游 PR #1254）。更早的宿主会在首帧显示「未确认」，切一次标签或发一条消息即自动纠正。",
   ],
   settingsTitle: "余额与余量",
   settingsIntro:
@@ -174,7 +176,7 @@ const EN: Copy = {
     "The plugin resolves the gateway actually used by the active engine, then queries that provider: balance for API billing, remaining quota for subscription plans. When the provider exposes nothing public it says so explicitly.",
   helpUpdateTitle: "When the display updates",
   helpUpdateItems: [
-    "On app start: the route is aligned with the engine you used last and queried once immediately.",
+    "On app start: the route follows the engine you used last (or the session the host replays) and is queried once immediately.",
     "When you switch tabs or sessions (i.e. engines): the route switches and re-queries right away.",
     "After every turn: one automatic refresh (default minimum interval 30s between refreshes).",
     "Manually: the chip panel's Refresh now, Refresh all routes here, or the command palette entry.",
@@ -190,11 +192,13 @@ const EN: Copy = {
     "Reads ~/.ccgui-next/config.json and each engine's own config (claude → ~/.claude/settings.json, codex → ~/.codex/config.toml, …).",
     "Your key is only used for read-only queries against that route's own provider; it never leaves for a third party and is never logged.",
     "The host's network egress requires pre-declared domains, so this plugin uses exec:curl for config reads and requests, plus exec:cmd (Windows) or exec:sh (macOS / Linux) to locate the home directory.",
+    "No host internals are read (no browser local storage / internal stores): the active engine comes from official events only.",
   ],
   helpPlatformTitle: "Platforms",
   helpPlatformItems: [
     "Windows: verified (2026-09, cmd + backslash environment).",
     "macOS / Linux: ported (sh for $HOME, forward-slash paths, portable curl flags) but not yet verified on real machines; please report issues.",
+    "Host version: knowing the engine right at startup relies on the replay of `session://activated` (upstream PR #1254). On older hosts the first frame shows unconfirmed and self-corrects on the next tab switch or message.",
   ],
   settingsTitle: "Balance & quota",
   settingsIntro:
