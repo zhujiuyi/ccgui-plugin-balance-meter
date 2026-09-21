@@ -6,22 +6,16 @@ import { defineConfig, type Plugin } from "vite";
  * 单文件 ESM 产物（宿主以 blob URL 加载 main.js，裸导入无法解析，
  * 因此不做 external、不做动态 import）。
  *
- * 按仓库约定，产物不落进源码目录：默认输出到
- * `%TEMP%\ccgui-plugin\balance-meter\dist\`，并把 manifest.json 一并
- * 拷过去，使该目录可直接用于「设置 → 插件 → 从本地目录安装」。
+ * 默认输出到仓库内的 `dist/`，并把 manifest.json 一并拷过去，
+ * 使该目录可直接用于「设置 → 插件 → 从本地目录安装」。
  */
 /**
  * 产物目录：
- *  - 本地开发（默认）：系统临时目录下的 `ccgui-plugin/balance-meter/dist`，源码目录保持干净；
- *  - CI / 发版：用 `CCGUI_PLUGIN_OUT_DIR=dist` 覆盖，产物落在仓库内 `dist/`（.gitignore）；
- *  - 两者都没有时退到仓库内 `dist/`。
+ * 如打包流程需要独立暂存目录，可用 `CCGUI_PLUGIN_OUT_DIR` 覆盖。
  */
-const tempRoot = process.env.TEMP ?? process.env.TMP;
 const stageDir = process.env.CCGUI_PLUGIN_OUT_DIR?.trim()
   ? path.resolve(__dirname, process.env.CCGUI_PLUGIN_OUT_DIR.trim())
-  : tempRoot
-    ? path.join(tempRoot, "ccgui-plugin", "balance-meter", "dist")
-    : path.resolve(__dirname, "dist");
+  : path.resolve(__dirname, "dist");
 
 /** 把仓库根的 manifest.json 拷进产物目录（装机需要三件套同目录）。 */
 function stageManifest(): Plugin {

@@ -181,6 +181,52 @@
   color: var(--color-text-primary, #18181b);
 }
 
+.balance-meter-row.is-details {
+  align-items: start;
+  /* 额度窗口是多行块：标签单独一行、窗口占满面板整宽。原先挤在 68px 标签列
+     右侧的窄列里，宽度恰好卡在临界点——字体度量稍宽（不同机器/不同语言）就会
+     把重置时间挤到下一行，与相邻窗口形成"错行"。 */
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.balance-meter-row.is-details dd {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.balance-meter-quota-windows {
+  display: grid;
+  gap: 5px;
+}
+
+.balance-meter-quota-window {
+  /* 两列：值 + 重置时间。用 grid 固定列（而不是 flex-wrap），空间不足时只会
+     让"值"内部换行，重置时间永远不会被整体挤到下一行、脱离自己的窗口。 */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  justify-items: end;
+  text-align: right;
+}
+
+/* 值允许内部换行（极窄时的兜底），重置时间永不拆行 */
+.balance-meter-quota-value {
+  white-space: normal;
+  min-width: 0;
+}
+
+.balance-meter-quota-reset {
+  white-space: nowrap;
+}
+
+.balance-meter-quota-reset {
+  color: var(--color-text-secondary, #52525b);
+}
+
 .dark .balance-meter-row dd {
   color: var(--color-text-primary, #f4f4f5);
 }

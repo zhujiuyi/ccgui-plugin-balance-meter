@@ -70,6 +70,35 @@ describe("resolveProvider", () => {
     expect(reason).toBeTruthy();
   });
 
+  it("queries and parses all OpenCode Go subscription windows", () => {
+    const { provider, probes } = resolveProvider("https://opencode.ai/zen/go/v1", "");
+    expect(provider.id).toBe("opencode");
+    const usage = probes.find((probe) => probe.id === "opencode.go-usage");
+    expect(usage?.build(ctxOf("https://opencode.ai/zen/go/v1"))).toBe(
+      "https://opencode.ai/zen/go/v1/usage",
+    );
+    const parsed = usage?.parse({
+      usage: {
+        rolling: { status: "ok", percent: 12, resetsAt: "2026-09-21T13:55:00.112Z" },
+        weekly: { status: "ok", percent: 34, resetsAt: "2026-09-28T00:00:00.112Z" },
+        monthly: { status: "ok", percent: 56, resetsAt: "2026-10-19T09:08:42.112Z" },
+      },
+    });
+    expect(parsed).toMatchObject({
+      kind: "subscription",
+      currency: "%",
+      amount: 88,
+      used: 12,
+      total: 100,
+      planName: "OpenCode Go",
+    });
+    expect(parsed?.quotaWindows).toEqual([
+      { kind: "rolling", used: 12, remaining: 88, resetAt: Date.parse("2026-09-21T13:55:00.112Z") },
+      { kind: "weekly", used: 34, remaining: 66, resetAt: Date.parse("2026-09-28T00:00:00.112Z") },
+      { kind: "monthly", used: 56, remaining: 44, resetAt: Date.parse("2026-10-19T09:08:42.112Z") },
+    ]);
+  });
+
   it("recognises every gateway in the ccgui custom-channel presets", () => {
     // 取自 desktop-cc-gui src/features/settings/providerPresets.ts（v1.0.5）
     const presets: Array<[string, string]> = [

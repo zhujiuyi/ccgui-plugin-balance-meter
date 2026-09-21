@@ -1,7 +1,7 @@
 {
   "id": "balance-meter",
   "name": "余额与余量",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "sdkVersion": "^0.3",
   "minAppVersion": "1.0.5",
   "author": "zhujiuyi",
@@ -19,6 +19,7 @@
     "theme",
     "exec:curl",
     "exec:cmd",
+    "exec:powershell.exe",
     "exec:sh"
   ],
   "configSchema": {

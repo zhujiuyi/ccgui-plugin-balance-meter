@@ -9,6 +9,15 @@
  */
 
 import type { PluginContext } from "./ccgui-plugin";
+import { readClaudeOauthUsage, type ClaudeOauthResult } from "./claude-oauth";
+import { readCodexRateLimits } from "./codex";
+import {
+  readGrokQuota,
+  readKimiQuota,
+  readMinimaxQuota,
+  readZhipuQuota,
+  type PlanQuota,
+} from "./coding-plans";
 import type { Copy } from "./i18n";
 import { detectHome, detectPlatform, exec, httpGet } from "./exec";
 import {
@@ -17,6 +26,7 @@ import {
   type ParsedAmount,
   type Probe,
   type ProbeContext,
+  type QuotaWindow,
 } from "./providers";
 import { originOf, resolveRoutes, type RouteInfo } from "./routes";
 
@@ -31,6 +41,7 @@ export interface BalanceSnapshot {
   used: number | null;
   planName: string | null;
   detail: string | null;
+  quotaWindows: QuotaWindow[] | null;
   endpoint: string | null;
   endpointLabel: string | null;
   /** 该结果来自哪种地址：用户为该路由自定义 / 全局自定义 / 自动探测。 */
@@ -402,6 +413,77 @@ export class BalanceStore {
     }
   }
 
+  /**
+   * 订阅类通道（编程套餐）共用的快照构造：
+   * 窗口已是结构化 QuotaWindow，直接透传；失败时映射成可操作提示。
+   * CLI 登录类通道（传了 cliLogin* 文案）的过期/缺失/401 都归到「重新登录」。
+   */
+  private planSnapshot(options: {
+    providerId: string;
+    providerName: string;
+    result: PlanQuota;
+    endpoint: string;
+    endpointLabel: string;
+    unavailablePrefix: string;
+    cliLoginExpired: string | null;
+    cliLoginMissing: string | null;
+  }): BalanceSnapshot {
+    const { result } = options;
+    if (!result.windows || result.windows.length === 0) {
+      return this.unavailable(
+        options.providerName,
+        options.endpoint,
+        "subscription",
+        this.planErrorText(options, result),
+      );
+    }
+    const windows = result.windows;
+    const primary = windows[0];
+    const planType = result.planType ?? null;
+    return {
+      kind: "subscription",
+      providerId: options.providerId,
+      providerName: options.providerName,
+      billing: "subscription",
+      currency: "%",
+      amount: primary.remaining,
+      total: 100,
+      used: primary.used,
+      planName: planType
+        ? `${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
+        : null,
+      detail: null,
+      quotaWindows: windows,
+      endpoint: options.endpoint,
+      endpointLabel: options.endpointLabel,
+      endpointSource: "auto",
+      checkedAt: Date.now(),
+      error: null,
+    };
+  }
+
+  private planErrorText(
+    options: { unavailablePrefix: string; cliLoginExpired: string | null; cliLoginMissing: string | null },
+    result: PlanQuota,
+  ): string {
+    if (options.cliLoginExpired && (result.error === "expired" || result.error === "unauthorized")) {
+      return options.cliLoginExpired;
+    }
+    if (options.cliLoginMissing && (result.error === "missing" || !result.error)) {
+      return options.cliLoginMissing;
+    }
+    return `${options.unavailablePrefix}${result.detail ? `（${result.detail}）` : ""}`;
+  }
+
+  /** 把 Claude OAuth 查询的失败原因映射成用户可操作的中英文案。 */
+  private claudeUsageError(result: ClaudeOauthResult): string {
+    if (result.error === "expired" || result.error === "unauthorized") {
+      return this.t.claudeLoginExpired;
+    }
+    if (result.error === "missing") return this.t.claudeLoginMissing;
+    return `${this.t.claudeUsageUnavailable}${result.detail ? `（${result.detail}）` : ""}`;
+  }
+
   private unavailable(
     providerName: string | null,
     endpoint: string | null,
@@ -420,6 +502,7 @@ export class BalanceStore {
       used: null,
       planName: null,
       detail: null,
+      quotaWindows: null,
       endpoint,
       endpointLabel: null,
       endpointSource,
@@ -430,6 +513,140 @@ export class BalanceStore {
 
   /** 查一个路由：缓存地址优先，失败则重跑探测列表（需求 1）。 */
   private async queryRoute(route: RouteInfo, force = false): Promise<BalanceSnapshot> {
+    if (route.queryKind === "codex-rate-limits") {
+      const { limits, error } = await readCodexRateLimits(this.ctx);
+      if (!limits) {
+        return this.unavailable(
+          "OpenAI（ChatGPT）",
+          "codex app-server · account/rateLimits/read",
+          "subscription",
+          `${this.t.codexRateLimitUnavailable}${error ? `：${error}` : ""}`,
+        );
+      }
+      const remaining = Math.max(0, Math.min(100, 100 - limits.primary.usedPercent));
+      const windows = [limits.primary, limits.secondary]
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .map((item) => ({
+          kind: "duration" as const,
+          durationMins: item.windowDurationMins,
+          used: item.usedPercent,
+          remaining: Math.max(0, Math.min(100, 100 - item.usedPercent)),
+          resetAt: item.resetsAt * 1000,
+        }));
+      return {
+        kind: "subscription",
+        providerId: "openai-chatgpt",
+        providerName: "OpenAI（ChatGPT）",
+        billing: "subscription",
+        currency: "%",
+        amount: remaining,
+        total: 100,
+        used: limits.primary.usedPercent,
+        planName: this.t.chatgptPlanName(limits.planType),
+        detail: null,
+        quotaWindows: windows,
+        endpoint: "codex app-server · account/rateLimits/read",
+        endpointLabel: "Codex App Server",
+        endpointSource: "auto",
+        checkedAt: Date.now(),
+        error: null,
+      };
+    }
+
+    if (route.queryKind === "kimi-usage") {
+      const result = await readKimiQuota(this.ctx, this.state.home ?? "", route.credential);
+      return this.planSnapshot({
+        providerId: "kimi-coding",
+        providerName: this.t.kimiProviderName,
+        result,
+        endpoint: "api.kimi.com/coding/v1/usages",
+        endpointLabel: this.t.kimiEndpointLabel,
+        unavailablePrefix: this.t.kimiUsageUnavailable,
+        cliLoginExpired: route.credential ? null : this.t.kimiLoginExpired,
+        cliLoginMissing: route.credential ? null : this.t.kimiLoginMissing,
+      });
+    }
+
+    if (route.queryKind === "zhipu-quota") {
+      const result = await readZhipuQuota(this.ctx, route.origin, route.credential);
+      return this.planSnapshot({
+        providerId: "zhipu-coding-plan",
+        providerName: this.t.zhipuProviderName,
+        result,
+        endpoint: `${route.origin}/api/monitor/usage/quota/limit`,
+        endpointLabel: this.t.zhipuEndpointLabel,
+        unavailablePrefix: this.t.zhipuUsageUnavailable,
+        cliLoginExpired: null,
+        cliLoginMissing: null,
+      });
+    }
+
+    if (route.queryKind === "minimax-plan") {
+      const result = await readMinimaxQuota(this.ctx, route.origin, route.credential);
+      return this.planSnapshot({
+        providerId: "minimax-coding-plan",
+        providerName: this.t.minimaxProviderName,
+        result,
+        endpoint: `${route.origin}/v1/api/openplatform/coding_plan/remains`,
+        endpointLabel: this.t.minimaxEndpointLabel,
+        unavailablePrefix: this.t.minimaxUsageUnavailable,
+        cliLoginExpired: null,
+        cliLoginMissing: null,
+      });
+    }
+
+    if (route.queryKind === "grok-billing") {
+      const result = await readGrokQuota(this.ctx, this.state.home ?? "");
+      return this.planSnapshot({
+        providerId: "xai-grok",
+        providerName: this.t.grokProviderName,
+        result,
+        endpoint: "cli-chat-proxy.grok.com/v1/billing",
+        endpointLabel: this.t.grokEndpointLabel,
+        unavailablePrefix: this.t.grokUsageUnavailable,
+        cliLoginExpired: this.t.grokLoginExpired,
+        cliLoginMissing: this.t.grokLoginMissing,
+      });
+    }
+
+    if (route.queryKind === "claude-oauth-usage") {
+      const result = await readClaudeOauthUsage(this.ctx, this.state.home ?? "");
+      if (!result.windows) {
+        return this.unavailable(
+          this.t.claudeProviderName,
+          "api/oauth/usage",
+          "subscription",
+          this.claudeUsageError(result),
+        );
+      }
+      const windows = result.windows.map((window) => ({
+        kind: "duration" as const,
+        durationMins: window.durationMins,
+        used: window.usedPercent,
+        remaining: Math.max(0, Math.min(100, 100 - window.usedPercent)),
+        resetAt: window.resetsAtMs,
+      }));
+      const primary = windows[0];
+      return {
+        kind: "subscription",
+        providerId: "claude-subscription",
+        providerName: this.t.claudeProviderName,
+        billing: "subscription",
+        currency: "%",
+        amount: primary.remaining,
+        total: 100,
+        used: primary.used,
+        planName: this.t.claudePlanName(result.planType),
+        detail: null,
+        quotaWindows: windows,
+        endpoint: "api/oauth/usage",
+        endpointLabel: this.t.claudeEndpointLabel,
+        endpointSource: "auto",
+        checkedAt: Date.now(),
+        error: null,
+      };
+    }
+
     const cacheKey = `route.${route.routeKey}`;
     const cached = await this.ctx.storage.get<CachedEndpoint>(cacheKey);
     const override = this.state.endpointOverrides[route.routeKey] ?? "";
@@ -555,6 +772,7 @@ export class BalanceStore {
       used: parsed.used ?? null,
       planName: parsed.planName ?? null,
       detail: parsed.detail ?? null,
+      quotaWindows: parsed.quotaWindows ?? null,
       endpoint,
       endpointLabel,
       endpointSource,
@@ -577,6 +795,7 @@ export function formatAmount(snapshot: BalanceSnapshot | null): string {
   if (!snapshot || snapshot.kind === "unavailable" || snapshot.amount === null) return "—";
   const symbol =
     snapshot.currency === "CNY" ? "¥" : snapshot.currency === "USD" ? "$" : "";
+  if (snapshot.currency === "%") return `${Math.round(snapshot.amount)}%`;
   const value =
     Math.abs(snapshot.amount) > 0 && Math.abs(snapshot.amount) < 0.01
       ? snapshot.amount.toFixed(4)

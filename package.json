@@ -1,6 +1,6 @@
 {
   "name": "ccgui-plugin-balance-meter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "CC GUI 插件：按实际路由网关识别供应商与计费方式，查询 API 余额 / 订阅余量",
   "type": "module",

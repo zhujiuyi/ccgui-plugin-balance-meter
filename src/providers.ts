@@ -9,6 +9,16 @@
  */
 
 export type BillingKind = "api" | "subscription" | "unknown";
+export type QuotaWindowKind = "rolling" | "weekly" | "monthly" | "duration";
+
+export interface QuotaWindow {
+  kind: QuotaWindowKind;
+  /** 固定时长窗口（例如 Codex 的 5 小时 / 7 天）；命名由界面语言决定。 */
+  durationMins?: number | null;
+  used: number;
+  remaining: number;
+  resetAt: number | null;
+}
 
 export interface ParsedAmount {
   kind: "balance" | "subscription";
@@ -18,6 +28,11 @@ export interface ParsedAmount {
   used?: number | null;
   planName?: string | null;
   detail?: string | null;
+  /**
+   * 多窗口额度必须保留结构化数据，禁止提前拼接展示文本。
+   * 由 UI 逐项渲染，才能正确本地化并保证窄面板下不串行。
+   */
+  quotaWindows?: QuotaWindow[] | null;
 }
 
 export interface ProbeContext {
@@ -245,6 +260,49 @@ const officialOpenai: ProviderDef = {
   ],
 };
 
+const opencodeGo: ProviderDef = {
+  id: "opencode",
+  name: "OpenCode Go",
+  billing: "subscription",
+  queryable: true,
+  match: (host, path) => host === "opencode.ai" && /^\/zen\/go(?:\/|$)/.test(path),
+  probes: [
+    {
+      id: "opencode.go-usage",
+      label: "OpenCode Go 订阅余量",
+      billing: "subscription",
+      build: (c) => `${c.origin}/zen/go/v1/usage`,
+      headers: (c) => bearer(c.key),
+      parse: (json) => {
+        const windows = [
+          ["rolling", "usage.rolling"],
+          ["weekly", "usage.weekly"],
+          ["monthly", "usage.monthly"],
+        ] as const;
+        const parsed = windows.flatMap(([kind, path]) => {
+          const percent = num(at(json, `${path}.percent`));
+          if (percent === null) return [];
+          const used = Math.max(0, Math.min(100, percent));
+          const reset = at(json, `${path}.resetsAt`);
+          const resetAt = typeof reset === "string" ? Date.parse(reset) : Number.NaN;
+          return [{ kind, used, remaining: 100 - used, resetAt: Number.isFinite(resetAt) ? resetAt : null }];
+        });
+        const primary = parsed[0];
+        if (!primary) return null;
+        return {
+          kind: "subscription",
+          currency: "%",
+          amount: primary.remaining,
+          total: 100,
+          used: primary.used,
+          planName: "OpenCode Go",
+          quotaWindows: parsed,
+        };
+      },
+    },
+  ],
+};
+
 /** 官方订阅类 / 无余额接口的供应商：命中即明确"查不到"。 */
 function matchHosts(...hosts: string[]): (host: string, path: string) => boolean {
   return (host) => hosts.some((candidate) => host === candidate || host.endsWith(candidate));
@@ -274,6 +332,10 @@ function noApiProvider(
  * 2026-09-19 于 v1.0.5 核对）：claude 12 项 / kimi 2 项 / grok 1 项 / codex 10 项，
  * 去重后覆盖下列域名。**没有公开余额接口的也一律收录**——这样插件能报出
  * "XX 未提供公开的余额/余量查询接口"而不是含糊的"未知供应商"。
+ *
+ * 注：智谱 GLM / Z.AI、Kimi Coding、MiniMax、Grok 订阅等**编程套餐**渠道
+ * 已由 routes.ts 的主机分流 + coding-plans.ts 的专用适配器接管，此处的
+ * `noApiProvider` 条目只作兜底（网关不是标准 URL 形态时才会走到）。
  */
 const noBalanceProviders: ProviderDef[] = [
   // 官方直连（claude / codex）
@@ -284,7 +346,7 @@ const noBalanceProviders: ProviderDef[] = [
   noApiProvider("zai", "Z.AI 编码套餐", "subscription", ["api.z.ai"], "编码套餐无公开余量接口"),
   // Kimi 系（Moonshot 有余额接口，见下方 moonshot；Kimi Coding 是订阅）
   noApiProvider("kimi-coding", "Kimi Coding", "subscription", ["api.kimi.com"], "编码套餐无公开余量接口"),
-  // MiniMax / 小米 MiMo / 百炼 / 龙猫 / OpenCode / xAI / Groq / Mistral / Together / Google
+  // MiniMax / 小米 MiMo / 百炼 / 龙猫 / xAI / Groq / Mistral / Together / Google
   noApiProvider("minimax", "MiniMax", "api", ["api.minimaxi.com", "api.minimax.chat"], "未找到公开的余额接口"),
   noApiProvider("xiaomi", "Xiaomi MiMo", "api", ["api.xiaomimimo.com"], "未找到公开的余额接口"),
   noApiProvider("xiaomi-plan", "Xiaomi MiMo Token Plan", "subscription", [
@@ -297,7 +359,6 @@ const noBalanceProviders: ProviderDef[] = [
     "coding.dashscope.aliyuncs.com",
   ], "余额/用量只在控制台可见，无公开接口"),
   noApiProvider("longcat", "LongCat", "api", ["api.longcat.chat"], "未找到公开的余额接口"),
-  noApiProvider("opencode", "OpenCode Zen / Go", "subscription", ["opencode.ai"], "订阅额度无公开接口"),
   noApiProvider("xai", "xAI Grok", "api", ["api.x.ai"], "未找到公开的余额接口"),
   noApiProvider("groq", "Groq", "api", ["api.groq.com"], "未找到公开的余额接口"),
   noApiProvider("mistral", "Mistral", "api", ["api.mistral.ai"], "未找到公开的余额接口"),
@@ -400,6 +461,7 @@ const KNOWN_PROVIDERS: ProviderDef[] = [
   moonshot,
   siliconflow,
   officialOpenai,
+  opencodeGo,
   ...noBalanceProviders,
 ];
 

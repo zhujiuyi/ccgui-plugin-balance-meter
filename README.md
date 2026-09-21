@@ -32,9 +32,14 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 
 1. **识别路由**：读 `~/.ccgui-next/config.json` 的 `providers` / `current`；`current` 为
    `__local_settings_json__` 时改读该引擎自己的配置（claude → `~/.claude/settings.json` 的
-   `ANTHROPIC_BASE_URL`；codex → `~/.codex/config.toml` 的 `base_url`）。
-2. **判断供应商**：按网关主机名匹配内置供应商目录；未命中则按 New-API / One-API 系中转的
-   常见余量接口逐个探测。
+   `ANTHROPIC_BASE_URL`；codex → `~/.codex/config.toml` 与登录状态）。Codex 使用 ChatGPT
+   账号登录且没有自定义 `base_url` 时，调用官方 `codex app-server` 的
+   `account/rateLimits/read` 获取订阅额度窗口；Claude Code 使用订阅账号（OAuth）登录且没有
+   自定义网关与 API key 时，读 `~/.claude/.credentials.json` 并查询内部用量接口
+   `api/oauth/usage`（5 小时 / 7 天窗口；实验性，令牌过期只提示重新登录、不代为刷新）。
+2. **判断供应商**：网关命中已知编程套餐渠道（Kimi Coding / 智谱 GLM·Z.AI / MiniMax）
+   时直接走各自的套餐额度接口（见下表）；否则按网关主机名匹配内置供应商目录，未命中则按
+   New-API / One-API 系中转的常见余量接口逐个探测。
 3. **查询与缓存**：命中即按路由缓存该接口地址，下次直接使用；地址失效会自动重探。
 
 ## 收录的供应商（与 ccgui 自定义渠道预设表对齐）
@@ -49,17 +54,19 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 | Moonshot / Kimi | api.moonshot.cn / .ai | API | ✅ `GET /v1/users/me/balance` |
 | SiliconFlow | *.siliconflow.cn / .com | API | ✅ `GET /v1/user/info` |
 | OpenAI（官方直连） | api.openai.com | API | ⚠️ `GET /v1/dashboard/billing/subscription`（现多为会话 key 专用） |
-| 智谱 GLM | open.bigmodel.cn | API | ❌ 无公开接口 |
+| 智谱 GLM / Z.AI 编码套餐 | open.bigmodel.cn · api.z.ai | 订阅 | ✅ `GET /api/monitor/usage/quota/limit`（5 小时 / 每周；**已用真实套餐实测**） |
 | Z.AI 编码套餐 | api.z.ai | 订阅 | ❌ 无公开接口 |
-| Kimi Coding | api.kimi.com | 订阅 | ❌ 无公开接口 |
-| MiniMax | api.minimaxi.com | API | ❌ 无公开接口 |
+| Kimi Coding | api.kimi.com | 订阅 | ✅ `GET /coding/v1/usages`（5 小时 / 每周；API key 或 Kimi Code CLI 登录） |
+| MiniMax 编程套餐 | api.minimaxi.com · api.minimax.io | 订阅 | ✅ `GET /v1/api/openplatform/coding_plan/remains`（5 小时 / 每周） |
 | Xiaomi MiMo | api.xiaomimimo.com | API | ❌ 无公开接口 |
 | Xiaomi MiMo Token Plan | token-plan-{cn,ams,sgp}.xiaomimimo.com | 订阅 | ❌ 无公开接口 |
 | 阿里云百炼 Bailian | *.dashscope.aliyuncs.com | API | ❌ 仅控制台可见 |
 | LongCat | api.longcat.chat | API | ❌ 无公开接口 |
-| OpenCode Zen / Go | opencode.ai | 订阅 | ❌ 无公开接口 |
+| OpenCode Go | opencode.ai/zen/go | 订阅 | ✅ `GET /zen/go/v1/usage`（滚动/周/月窗口） |
 | Anthropic 官方 | api.anthropic.com | API | ❌ 无公开接口 |
-| OpenAI 订阅 | chatgpt.com | 订阅 | ❌ 无公开接口 |
+| OpenAI 订阅 | chatgpt.com | 订阅 | ✅ Codex App Server `account/rateLimits/read` |
+| Claude 订阅 | api.anthropic.com（OAuth 登录） | 订阅 | ⚠️ 内部接口 `GET /api/oauth/usage`（实验性，未真机验证） |
+| Grok 订阅（Grok CLI 登录） | cli-chat-proxy.grok.com | 订阅 | ✅ `GET /v1/billing?format=credits`（信用池周期） |
 | xAI Grok | api.x.ai | API | ❌ 无公开接口 |
 | Groq / Mistral / Together / Google Gemini | api.groq.com · api.mistral.ai · api.together.xyz · generativelanguage.googleapis.com | API | ❌ 无公开接口 |
 | 未识别的中转站 | 任意其它域名 | 由返回值推断 | 依次探测 New-API `/api/user/self`、OpenAI 兼容 billing、`/api/v1/credits`、`/api/user/subscription`、`/api/usage` |
@@ -70,21 +77,26 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 
 ## 权限说明（重要）
 
-插件声明了 `exec:curl`，以及 `exec:cmd`（Windows）/ `exec:sh`（macOS、Linux）：
+插件声明了 `exec:curl`，以及 `exec:cmd` / `exec:powershell.exe`（Windows）、
+`exec:sh`（macOS、Linux）：
 
 1. 宿主的网络出口（`plugin_http_request`）要求**预先声明具体域名**，而"按实际路由识别中转站"
    本质上无法预知域名，所以必须走 exec 出口；
 2. `cmd` / `sh` 仅用于取用户目录（`echo %USERPROFILE%` / `printf %s "$HOME"`）；
-3. `curl` 用于读 `~/.ccgui-next/config.json` 与各引擎配置，以及向**该路由自己的供应商**
+3. `curl` 用于读 `~/.ccgui-next/config.json` 与各引擎配置（含 `~/.claude/.credentials.json`、
+   `~/.kimi-code/credentials/kimi-code.json`、`~/.grok/auth.json`），以及向**该路由自己的供应商**
    发起只读查询；
-4. **不读取宿主内部状态**：当前引擎只来自官方事件（`session://activated` 与 usage 载荷里的
+4. Codex 官方 ChatGPT 登录模式由 PowerShell / sh 向本机 `codex app-server` 写入官方 JSON-RPC
+   请求来查询额度；查询过程不把登录 Token 放进命令行，也不自行向远端传递 Token。Claude 订阅
+   令牌只作为 curl 鉴权头发送给 Anthropic 自己的用量接口，不写日志、不入插件存储；
+5. **不读取宿主内部状态**：当前引擎只来自官方事件（`session://activated` 与 usage 载荷里的
    `engine`）；密钥只用于上述只读查询，不落盘、不入日志、不外发第三方。
 
 ## 适用平台
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
-| **Windows** | ✅ 已实测 | 用 `cmd /d /c echo %USERPROFILE%` 定位家目录；家目录为 `C:\Users\x` 时路径沿用 `\`（读取时转成 `file:///C:/…`）。 |
+| **Windows** | ✅ 已实测 | 用 `cmd /d /c echo %USERPROFILE%` 定位家目录；家目录为 `C:\Users\x` 时路径沿用 `\`（读取时转成 `file:///C:/…`）。其中**智谱 GLM 套餐通道已用真实套餐（Lite）端到端验证**；Claude 订阅、Kimi、MiniMax、Grok 四条通道目前仅单测与夹具覆盖。 |
 | **macOS / Linux** | ⚠️ 已适配，尚未真机验证 | 改用 `sh -c 'printf %s "$HOME"'`、路径用 `/`；curl 参数本身跨平台通用。 |
 
 平台判断读 webview 的 `navigator.userAgentData.platform` / `navigator.userAgent`，判不出来时按
@@ -97,7 +109,8 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 
 ## 已知边界
 
-- Anthropic / OpenAI 的订阅（Pro / Max、ChatGPT）**没有公开余量接口**，会落到「无法查询」。
+- Anthropic Pro / Max 没有公开余量接口；Codex 的 ChatGPT 登录模式可通过官方 App Server
+  显示主、次两个额度窗口。若本机 `codex` 版本过旧或命令不在 PATH，查询会失败并显示原因。
 - 中转站的余量接口差异极大：探测失败的可在设置里用「自定义余量接口」手工指定。
 
 ## 开发
@@ -105,7 +118,7 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 ```bash
 pnpm install
 pnpm typecheck && pnpm test          # 单测：路由 / 供应商 / 缓存 / 编辑态 / 跨平台分支
-pnpm build                           # 产物默认输出到系统临时目录，可用 CCGUI_PLUGIN_OUT_DIR 覆盖
+pnpm build                           # 产物默认输出到仓库内 dist/，可用 CCGUI_PLUGIN_OUT_DIR 覆盖
 pnpm validate && pnpm validate:dist  # 本地预检，镜像市场 CI 的门槛
 ```
 

@@ -11,6 +11,7 @@
 
 import type { PluginContext } from "./ccgui-plugin";
 import type { Copy } from "./i18n";
+import { helpDocument } from "./help";
 import type { RouteInfo } from "./routes";
 import { formatAmount, type BalanceStore, type MeterState } from "./state";
 
@@ -58,10 +59,44 @@ function timeLabel(ts: number | null | undefined): string {
   }
 }
 
+function quotaWindows(react: React, t: Copy, snapshot: NonNullable<MeterState["snapshot"]>) {
+  const names = {
+    rolling: t.quotaRolling,
+    weekly: t.quotaWeekly,
+    monthly: t.quotaMonthly,
+    duration: "",
+  };
+  return react.createElement(
+    "div",
+    { className: "balance-meter-quota-windows" },
+    snapshot.quotaWindows?.map((window) =>
+      react.createElement(
+        "div",
+        // 同一行可能有多个 duration 窗口（如 5 小时 + 7 天），key 必须带时长，
+        // 否则 React 视为重复 key、可能复用错节点。
+        { className: "balance-meter-quota-window", key: `${window.kind}:${window.durationMins ?? ""}` },
+        react.createElement(
+          "span",
+          { className: "balance-meter-quota-value" },
+          `${window.kind === "duration" && window.durationMins
+            ? t.quotaDuration(window.durationMins)
+            : names[window.kind]} ${Math.round(window.remaining)}%`,
+        ),
+        window.resetAt &&
+          react.createElement(
+            "span",
+            { className: "balance-meter-quota-reset" },
+            t.quotaResetAt(window.resetAt),
+          ),
+      ),
+    ),
+  );
+}
+
 /** 概览行：引擎 / 供应商 / 计费方式 / 当前余量 / 最近查询。 */
 function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo | null) {
   const snapshot = state.snapshot;
-  const entries: Array<[string, string]> = [];
+  const entries: Array<[string, string | ReturnType<React["createElement"]>]> = [];
   if (route) {
     entries.push([
       t.settingsEngine,
@@ -75,17 +110,23 @@ function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo 
       t.rowAmount,
       snapshot && snapshot.kind !== "unavailable" ? formatAmount(snapshot) : t.unavailable,
     ],
-    [t.rowCheckedAt, snapshot ? timeLabel(snapshot.checkedAt) : t.neverChecked],
   );
+  if (snapshot?.planName) entries.push([t.rowPlan, snapshot.planName]);
+  if (snapshot?.quotaWindows?.length) entries.push([t.rowDetails, quotaWindows(react, t, snapshot)]);
+  else if (snapshot?.detail) entries.push([t.rowDetails, snapshot.detail]);
+  entries.push([t.rowCheckedAt, snapshot ? timeLabel(snapshot.checkedAt) : t.neverChecked]);
   return react.createElement(
     "dl",
     { className: "balance-meter-dl" },
     entries.map(([label, value]) =>
       react.createElement(
         "div",
-        { className: "balance-meter-row", key: label },
+        {
+          className: `balance-meter-row${label === t.rowDetails ? " is-details" : ""}`,
+          key: label,
+        },
         react.createElement("dt", null, label),
-        react.createElement("dd", { title: value }, value),
+        react.createElement("dd", { title: typeof value === "string" ? value : undefined }, value),
       ),
     ),
   );
@@ -227,6 +268,7 @@ interface RefreshButtonProps {
 /** 设置页底部的使用说明：工作原理 / 更新时机 / 缓存 / 数据与权限。 */
 function HelpCard({ ctx, t }: { ctx: PluginContext; t: Copy }) {
   const react = ctx.react;
+  const help = helpDocument(ctx.host.locale);
   const block = (title: string, items: string[]) =>
     react.createElement(
       "div",
@@ -242,12 +284,9 @@ function HelpCard({ ctx, t }: { ctx: PluginContext; t: Copy }) {
   return react.createElement(
     "div",
     { className: "balance-meter-card" },
-    react.createElement("p", { className: "balance-meter-panel-title" }, t.helpTitle),
-    react.createElement("p", { className: "balance-meter-help-intro" }, t.helpIntro),
-    block(t.helpUpdateTitle, t.helpUpdateItems),
-    block(t.helpCacheTitle, t.helpCacheItems),
-    block(t.helpDataTitle, t.helpDataItems),
-    block(t.helpPlatformTitle, t.helpPlatformItems),
+    react.createElement("p", { className: "balance-meter-panel-title" }, help.title),
+    react.createElement("p", { className: "balance-meter-help-intro" }, help.intro),
+    ...help.sections.map((section) => block(section.title, section.items)),
   );
 }
 

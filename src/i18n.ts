@@ -9,6 +9,8 @@ export interface Copy {
   rowProvider: string;
   rowBilling: string;
   rowAmount: string;
+  rowPlan: string;
+  rowDetails: string;
   rowEndpoint: string;
   rowCheckedAt: string;
   refresh: string;
@@ -34,17 +36,6 @@ export interface Copy {
   noRouteForEngine: (engine: string) => string;
   engineUnconfirmed: string;
   /** 设置项 */
-  /** 使用说明 */
-  helpTitle: string;
-  helpIntro: string;
-  helpUpdateTitle: string;
-  helpUpdateItems: string[];
-  helpCacheTitle: string;
-  helpCacheItems: string[];
-  helpDataTitle: string;
-  helpDataItems: string[];
-  helpPlatformTitle: string;
-  helpPlatformItems: string[];
   settingsTitle: string;
   settingsIntro: string;
   settingsRoutes: string;
@@ -61,6 +52,37 @@ export interface Copy {
   missing: string;
   cmdRefreshTitle: string;
   neverChecked: string;
+  codexRateLimitUnavailable: string;
+  chatgptPlanName: (planType: string | null) => string;
+  /** Claude 订阅（OAuth 登录，内部用量接口，实验性） */
+  claudeProviderName: string;
+  claudeEndpointLabel: string;
+  claudeUsageUnavailable: string;
+  claudeLoginExpired: string;
+  claudeLoginMissing: string;
+  claudePlanName: (planType: string | null) => string;
+  /** 编程套餐渠道（Kimi / 智谱 / MiniMax / Grok） */
+  kimiProviderName: string;
+  kimiEndpointLabel: string;
+  kimiUsageUnavailable: string;
+  kimiLoginExpired: string;
+  kimiLoginMissing: string;
+  zhipuProviderName: string;
+  zhipuEndpointLabel: string;
+  zhipuUsageUnavailable: string;
+  minimaxProviderName: string;
+  minimaxEndpointLabel: string;
+  minimaxUsageUnavailable: string;
+  grokProviderName: string;
+  grokEndpointLabel: string;
+  grokUsageUnavailable: string;
+  grokLoginExpired: string;
+  grokLoginMissing: string;
+  quotaRolling: string;
+  quotaWeekly: string;
+  quotaMonthly: string;
+  quotaDuration: (durationMins: number) => string;
+  quotaResetAt: (resetsAtMs: number) => string;
 }
 
 const ZH: Copy = {
@@ -71,6 +93,8 @@ const ZH: Copy = {
   rowProvider: "供应商",
   rowBilling: "计费方式",
   rowAmount: "当前余量",
+  rowPlan: "订阅计划",
+  rowDetails: "额度窗口",
   rowEndpoint: "查询地址",
   rowCheckedAt: "最近查询",
   refresh: "立即刷新",
@@ -93,35 +117,6 @@ const ZH: Copy = {
   noRoute: "未识别到可用路由",
   noRouteForEngine: (engine) => `未识别到「${engine}」的路由配置（该引擎可能不在本插件支持范围）`,
   engineUnconfirmed: "未确认",
-  helpTitle: "使用说明",
-  helpIntro:
-    "插件按「当前引擎实际在用的网关地址」判断供应商与计费方式：API 计费查余额，订阅计划查余量；供应商没有公开接口时，明确显示「暂时无法提供余额显示」。",
-  helpUpdateTitle: "什么时候会更新",
-  helpUpdateItems: [
-    "打开 CC GUI：按上次使用的引擎（或宿主回放的当前会话）对准路由，立即查询一次。",
-    "切换标签 / 选择会话（换了引擎）：立刻切到该引擎的路由重新查询。",
-    "每轮对话结束：自动刷新一次（默认两次刷新之间至少间隔 30 秒）。",
-    "手动：状态栏图标点开后的「立即刷新」、本页「刷新全部路由」、命令面板的「刷新余额与余量」。",
-  ],
-  helpCacheTitle: "查询地址与缓存",
-  helpCacheItems: [
-    "查询成功的接口按路由（域名 + 路径）缓存，下次直接命中。",
-    "缓存地址失效会自动重新探测；全部失败后 10 分钟内不再重复请求，手动刷新可强制重探。",
-    "想自己指定接口：在上方「查询地址」点「修改」，填 http(s) 地址或含 {base} / {origin} 的模板，保存后立刻按新地址查一次。",
-  ],
-  helpDataTitle: "数据与权限",
-  helpDataItems: [
-    "读取 ~/.ccgui-next/config.json 与各引擎本地配置（claude → ~/.claude/settings.json，codex → ~/.codex/config.toml 等）。",
-    "密钥只用于向该路由自己的供应商发起只读查询，不外发第三方、不写日志。",
-    "因宿主的网络出口要求预先声明域名，本插件改用 exec:curl 读配置/发请求，并用 exec:cmd（Windows）或 exec:sh（macOS / Linux）定位用户目录。",
-    "不读取宿主内部状态（浏览器本地存储 / 内部 store）：当前引擎只来自官方事件。",
-  ],
-  helpPlatformTitle: "适用平台",
-  helpPlatformItems: [
-    "Windows：已实测（2026-09，cmd + 反斜杠环境）。",
-    "macOS / Linux：已做跨平台适配（sh 取 $HOME、路径统一正斜杠、curl 通用参数），但尚未在真机验证；如在其它系统遇到问题请反馈。",
-    "宿主版本：启动瞬间就认对引擎依赖 `session://activated` 的粘性回放（上游 PR #1254）。更早的宿主会在首帧显示「未确认」，切一次标签或发一条消息即自动纠正。",
-  ],
   settingsTitle: "余额与余量",
   settingsIntro:
     "按当前引擎实际在用的网关地址识别供应商与计费方式，查询 API 余额或订阅余量。工作原理、更新时机与权限说明见页面底部的「使用说明」。",
@@ -139,6 +134,43 @@ const ZH: Copy = {
   missing: "否",
   cmdRefreshTitle: "刷新余额与余量",
   neverChecked: "尚未查询",
+  codexRateLimitUnavailable: "无法通过 Codex App Server 读取 ChatGPT 余量",
+  chatgptPlanName: (planType) =>
+    planType ? `ChatGPT ${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : "ChatGPT",
+  claudeProviderName: "Claude（订阅）",
+  claudeEndpointLabel: "Claude OAuth 用量接口（实验性）",
+  claudeUsageUnavailable: "无法通过 Claude 订阅接口读取余量",
+  claudeLoginExpired: "Claude 登录凭证已过期或失效，请运行一次 claude 重新登录",
+  claudeLoginMissing: "未找到 Claude 登录凭证（~/.claude/.credentials.json）",
+  claudePlanName: (planType) =>
+    planType ? `Claude ${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : "Claude",
+  kimiProviderName: "Kimi（套餐）",
+  kimiEndpointLabel: "Kimi For Coding /coding/v1/usages",
+  kimiUsageUnavailable: "无法读取 Kimi 套餐余量",
+  kimiLoginExpired: "Kimi 登录已过期，请运行一次 kimi 重新登录",
+  kimiLoginMissing: "未找到 Kimi 登录凭证（请先运行 kimi 登录，或为该渠道配置 API key）",
+  zhipuProviderName: "智谱 GLM（套餐）",
+  zhipuEndpointLabel: "智谱开放平台 /api/monitor/usage/quota/limit",
+  zhipuUsageUnavailable: "无法读取智谱套餐额度",
+  minimaxProviderName: "MiniMax（套餐）",
+  minimaxEndpointLabel: "MiniMax /coding_plan/remains",
+  minimaxUsageUnavailable: "无法读取 MiniMax 套餐余量",
+  grokProviderName: "Grok（订阅）",
+  grokEndpointLabel: "Grok CLI 计费接口 /v1/billing",
+  grokUsageUnavailable: "无法读取 Grok 订阅余量",
+  grokLoginExpired: "Grok 登录已过期，请运行一次 grok login 重新登录",
+  grokLoginMissing: "未找到 Grok 登录凭证（请先运行 grok login）",
+  quotaRolling: "滚动窗口",
+  quotaWeekly: "每周额度",
+  quotaMonthly: "每月额度",
+  quotaDuration: (durationMins) =>
+    durationMins % 1440 === 0
+      ? `${durationMins / 1440} 天额度`
+      : durationMins % 60 === 0
+        ? `${durationMins / 60} 小时额度`
+        : `${durationMins} 分钟额度`,
+  quotaResetAt: (resetsAtMs) =>
+    `${new Date(resetsAtMs).toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" })} 重置`,
 };
 
 const EN: Copy = {
@@ -149,6 +181,8 @@ const EN: Copy = {
   rowProvider: "Provider",
   rowBilling: "Billing",
   rowAmount: "Remaining",
+  rowPlan: "Plan",
+  rowDetails: "Quota windows",
   rowEndpoint: "Endpoint",
   rowCheckedAt: "Checked",
   refresh: "Refresh now",
@@ -171,35 +205,6 @@ const EN: Copy = {
   noRoute: "No usable route detected",
   noRouteForEngine: (engine) => `No route config found for "${engine}" (engine may be unsupported)`,
   engineUnconfirmed: "unconfirmed",
-  helpTitle: "How it works",
-  helpIntro:
-    "The plugin resolves the gateway actually used by the active engine, then queries that provider: balance for API billing, remaining quota for subscription plans. When the provider exposes nothing public it says so explicitly.",
-  helpUpdateTitle: "When the display updates",
-  helpUpdateItems: [
-    "On app start: the route follows the engine you used last (or the session the host replays) and is queried once immediately.",
-    "When you switch tabs or sessions (i.e. engines): the route switches and re-queries right away.",
-    "After every turn: one automatic refresh (default minimum interval 30s between refreshes).",
-    "Manually: the chip panel's Refresh now, Refresh all routes here, or the command palette entry.",
-  ],
-  helpCacheTitle: "Endpoints and caching",
-  helpCacheItems: [
-    "A working endpoint is cached per route (host + path) and reused next time.",
-    "If the cached endpoint stops working the plugin re-probes; after a full failure it stays quiet for 10 minutes (a manual refresh forces a re-probe).",
-    "To pin one yourself: use Edit above the endpoint, enter an http(s) URL or a template with {base} / {origin}, save — it queries immediately.",
-  ],
-  helpDataTitle: "Data and permissions",
-  helpDataItems: [
-    "Reads ~/.ccgui-next/config.json and each engine's own config (claude → ~/.claude/settings.json, codex → ~/.codex/config.toml, …).",
-    "Your key is only used for read-only queries against that route's own provider; it never leaves for a third party and is never logged.",
-    "The host's network egress requires pre-declared domains, so this plugin uses exec:curl for config reads and requests, plus exec:cmd (Windows) or exec:sh (macOS / Linux) to locate the home directory.",
-    "No host internals are read (no browser local storage / internal stores): the active engine comes from official events only.",
-  ],
-  helpPlatformTitle: "Platforms",
-  helpPlatformItems: [
-    "Windows: verified (2026-09, cmd + backslash environment).",
-    "macOS / Linux: ported (sh for $HOME, forward-slash paths, portable curl flags) but not yet verified on real machines; please report issues.",
-    "Host version: knowing the engine right at startup relies on the replay of `session://activated` (upstream PR #1254). On older hosts the first frame shows unconfirmed and self-corrects on the next tab switch or message.",
-  ],
   settingsTitle: "Balance & quota",
   settingsIntro:
     "Identifies the provider and billing model from the gateway your active engine actually uses, then queries the API balance or subscription quota. See “How it works” at the bottom for timing, caching and permissions.",
@@ -217,6 +222,43 @@ const EN: Copy = {
   missing: "no",
   cmdRefreshTitle: "Refresh balance and quota",
   neverChecked: "not checked yet",
+  codexRateLimitUnavailable: "Could not read ChatGPT limits through Codex App Server",
+  chatgptPlanName: (planType) =>
+    planType ? `ChatGPT ${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : "ChatGPT",
+  claudeProviderName: "Claude (subscription)",
+  claudeEndpointLabel: "Claude OAuth usage (experimental)",
+  claudeUsageUnavailable: "Could not read Claude subscription usage",
+  claudeLoginExpired: "Claude login expired — run claude once to sign in again",
+  claudeLoginMissing: "No Claude login credentials found (~/.claude/.credentials.json)",
+  claudePlanName: (planType) =>
+    planType ? `Claude ${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : "Claude",
+  kimiProviderName: "Kimi (plan)",
+  kimiEndpointLabel: "Kimi For Coding /coding/v1/usages",
+  kimiUsageUnavailable: "Could not read Kimi plan usage",
+  kimiLoginExpired: "Kimi login expired — run kimi once to sign in again",
+  kimiLoginMissing: "No Kimi credentials found (run kimi to sign in, or set an API key for this channel)",
+  zhipuProviderName: "Zhipu GLM (plan)",
+  zhipuEndpointLabel: "Zhipu open platform /api/monitor/usage/quota/limit",
+  zhipuUsageUnavailable: "Could not read Zhipu plan quota",
+  minimaxProviderName: "MiniMax (plan)",
+  minimaxEndpointLabel: "MiniMax /coding_plan/remains",
+  minimaxUsageUnavailable: "Could not read MiniMax plan usage",
+  grokProviderName: "Grok (subscription)",
+  grokEndpointLabel: "Grok CLI billing /v1/billing",
+  grokUsageUnavailable: "Could not read Grok subscription usage",
+  grokLoginExpired: "Grok login expired — run grok login once to sign in again",
+  grokLoginMissing: "No Grok credentials found (run grok login first)",
+  quotaRolling: "Rolling",
+  quotaWeekly: "Weekly",
+  quotaMonthly: "Monthly",
+  quotaDuration: (durationMins) =>
+    durationMins % 1440 === 0
+      ? `${durationMins / 1440}d window`
+      : durationMins % 60 === 0
+        ? `${durationMins / 60}h window`
+        : `${durationMins}m window`,
+  quotaResetAt: (resetsAtMs) =>
+    `Resets ${new Date(resetsAtMs).toLocaleString("en", { dateStyle: "short", timeStyle: "short" })}`,
 };
 
 export function copy(locale: string): Copy {

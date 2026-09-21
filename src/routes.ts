@@ -25,6 +25,21 @@ export interface RouteInfo {
   credential: string | null;
   credentialSource: string;
   source: string;
+  /**
+   * 查询通道：
+   *  - http：供应商余额接口（含中转探测）
+   *  - codex-rate-limits：Codex 官方 app-server 的 ChatGPT 订阅额度
+   *  - claude-oauth-usage：Claude 订阅 OAuth 的内部用量接口（实验性）
+   *  - kimi-usage / zhipu-quota / minimax-plan / grok-billing：编程套餐额度
+   */
+  queryKind:
+    | "http"
+    | "codex-rate-limits"
+    | "claude-oauth-usage"
+    | "kimi-usage"
+    | "zhipu-quota"
+    | "minimax-plan"
+    | "grok-billing";
 }
 
 export const LOCAL_SETTINGS_SENTINEL = "__local_settings_json__";
@@ -54,7 +69,7 @@ export function routeKeyOf(gateway: string): string {
  * macOS/Linux 的 `/Users/x`、`/home/x` 自然用 `/`。
  * 早先无条件用 `\`，在 macOS/Linux 上会拼出 `\\.claude\\settings.json` 这种废路径。
  */
-function joinPath(home: string, ...parts: string[]): string {
+export function joinPath(home: string, ...parts: string[]): string {
   const base = home.replace(/[\\/]+$/, "");
   return [base, ...parts].join(base.includes("\\") ? "\\" : "/");
 }
@@ -92,15 +107,36 @@ interface LocalRoute {
   credential: string | null;
   credentialSource: string;
   source: string;
+  queryKind?: RouteInfo["queryKind"];
 }
 
 async function readClaudeLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
   const path = joinPath(home, ".claude", "settings.json");
   const json = await readJson(ctx, path);
   const env = record(json?.env) ?? {};
+  const gateway = str(env.ANTHROPIC_BASE_URL);
+  const credential = str(env.ANTHROPIC_AUTH_TOKEN) ?? str(env.ANTHROPIC_API_KEY);
+
+  // 既没有自定义网关也没有 API key 时，Claude Code 走的是订阅 OAuth 登录
+  // （凭证在 ~/.claude/.credentials.json）。余量由内部 OAuth 用量接口提供，
+  // 与供应商余额接口是两条通道，故单独标记 queryKind。
+  if (!gateway && !credential) {
+    const credentialsPath = joinPath(home, ".claude", ".credentials.json");
+    const credentials = await readJson(ctx, credentialsPath);
+    if (str(record(credentials?.claudeAiOauth)?.accessToken)) {
+      return {
+        gateway: "https://api.anthropic.com",
+        credential: null,
+        credentialSource: `${credentialsPath} → claudeAiOauth`,
+        source: credentialsPath,
+        queryKind: "claude-oauth-usage",
+      };
+    }
+  }
+
   return {
-    gateway: str(env.ANTHROPIC_BASE_URL),
-    credential: str(env.ANTHROPIC_AUTH_TOKEN) ?? str(env.ANTHROPIC_API_KEY),
+    gateway,
+    credential,
     credentialSource: `${path} → env.ANTHROPIC_AUTH_TOKEN`,
     source: path,
   };
@@ -112,22 +148,105 @@ async function readCodexLocal(ctx: PluginContext, home: string): Promise<LocalRo
   const match = /base_url\s*=\s*"([^"]+)"/.exec(toml);
   const authPath = joinPath(home, ".codex", "auth.json");
   const auth = await readJson(ctx, authPath);
+  const authMode = str(auth?.auth_mode)?.toLowerCase() ?? null;
+  const tokens = record(auth?.tokens);
+  const accessToken = str(tokens?.access_token);
+  const apiKey = str(auth?.OPENAI_API_KEY) ?? str(auth?.openai_api_key);
   const credential =
-    str(auth?.OPENAI_API_KEY) ??
-    str(auth?.openai_api_key) ??
-    str(record(auth?.tokens)?.access_token);
+    apiKey ?? accessToken;
+
+  // 官方 ChatGPT 登录不会在 config.toml 写 base_url。此时路由不是缺失，
+  // 而是由 Codex 自己管理的订阅通道；余量通过官方 app-server 查询。
+  if (!match && authMode === "chatgpt" && accessToken) {
+    return {
+      gateway: "https://chatgpt.com",
+      credential: null,
+      credentialSource: `${authPath} → ChatGPT 登录缓存`,
+      source: authPath,
+      queryKind: "codex-rate-limits",
+    };
+  }
+
   return {
-    gateway: match ? match[1] : null,
+    gateway: match ? match[1] : apiKey ? "https://api.openai.com/v1" : null,
     credential,
-    credentialSource: credential ? `${authPath} → OPENAI_API_KEY` : `${authPath}（未找到密钥）`,
+    credentialSource: apiKey
+      ? `${authPath} → OPENAI_API_KEY`
+      : credential
+        ? `${authPath} → ChatGPT access token`
+        : `${authPath}（未找到凭证）`,
     source: tomlPath,
   };
+}
+
+/** Kimi Code CLI 登录：凭证在 `~/.kimi-code/credentials/kimi-code.json`（旧版 `~/.kimi`）。 */
+async function readKimiLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
+  for (const dir of [".kimi-code", ".kimi"]) {
+    const path = joinPath(home, dir, "credentials", "kimi-code.json");
+    const json = await readJson(ctx, path);
+    if (str(json?.access_token)) {
+      return {
+        gateway: "https://api.kimi.com",
+        credential: null,
+        credentialSource: `${path} → access_token`,
+        source: path,
+        queryKind: "kimi-usage",
+      };
+    }
+  }
+  return {
+    gateway: null,
+    credential: null,
+    credentialSource: "",
+    source: joinPath(home, ".kimi-code", "credentials", "kimi-code.json"),
+  };
+}
+
+/** Grok CLI 登录：凭证在 `~/.grok/auth.json`（取第一条带 key 的条目）。 */
+async function readGrokLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
+  const path = joinPath(home, ".grok", "auth.json");
+  const json = await readJson(ctx, path);
+  const hasToken = json
+    ? Object.values(json).some((value) => str(record(value)?.key))
+    : false;
+  if (hasToken) {
+    return {
+      gateway: "https://cli-chat-proxy.grok.com",
+      credential: null,
+      credentialSource: `${path} → auth.json`,
+      source: path,
+      queryKind: "grok-billing",
+    };
+  }
+  return { gateway: null, credential: null, credentialSource: "", source: path };
 }
 
 const LOCAL_READERS: Record<string, (ctx: PluginContext, home: string) => Promise<LocalRoute>> = {
   claude: readClaudeLocal,
   codex: readCodexLocal,
+  kimi: readKimiLocal,
+  grok: readGrokLocal,
 };
+
+/**
+ * 网关命中已知编程套餐渠道时，把默认的 http 探测换成对应额度适配器。
+ * 路径/主机名依据各家官方或上游实现（见 coding-plans.ts 文件头）。
+ */
+function codingPlanQueryKindFor(gateway: string): RouteInfo["queryKind"] | null {
+  try {
+    const url = new URL(gateway);
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    if (host === "api.kimi.com" && path.startsWith("/coding")) return "kimi-usage";
+    if (host === "open.bigmodel.cn" || host === "bigmodel.cn" || host === "api.z.ai" || host === "z.ai") {
+      return "zhipu-quota";
+    }
+    if (host === "api.minimaxi.com" || host === "api.minimax.io") return "minimax-plan";
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function toRoute(
   engine: string,
@@ -136,6 +255,7 @@ function toRoute(
   credentialSource: string,
   source: string,
   providerHint: string | null,
+  queryKind: RouteInfo["queryKind"] = "http",
 ): RouteInfo {
   return {
     engine,
@@ -146,6 +266,7 @@ function toRoute(
     credential,
     credentialSource,
     source,
+    queryKind: queryKind === "http" ? (codingPlanQueryKindFor(gateway) ?? queryKind) : queryKind,
   };
 }
 
@@ -213,7 +334,15 @@ export async function resolveRoutes(
     const local = await reader(ctx, home);
     if (local.gateway) {
       routes.push(
-        toRoute(engine, local.gateway, local.credential, local.credentialSource, local.source, null),
+        toRoute(
+          engine,
+          local.gateway,
+          local.credential,
+          local.credentialSource,
+          local.source,
+          null,
+          local.queryKind,
+        ),
       );
     } else {
       diagnostics.push(`${engine}: 未从 ${local.source} 读到网关地址`);
