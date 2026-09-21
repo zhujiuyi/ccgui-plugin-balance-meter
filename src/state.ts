@@ -280,6 +280,10 @@ export class BalanceStore {
     this.set({ panelOpen: !this.state.panelOpen });
   }
 
+  closePanel(): void {
+    if (this.state.panelOpen) this.set({ panelOpen: false });
+  }
+
   beginEndpointEdit(routeKey: string, initial: string): void {
     this.set({ edit: { routeKey, draft: initial, error: null, saving: false } });
   }

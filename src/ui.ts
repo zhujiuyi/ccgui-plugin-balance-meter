@@ -17,6 +17,14 @@ import { formatAmount, type BalanceStore, type MeterState } from "./state";
 
 type React = PluginContext["react"];
 
+/** 仅用于判定状态栏插件根节点之外的交互，保持逻辑可单测。 */
+export function isOutsideElement(
+  root: Pick<Node, "contains"> | null,
+  target: EventTarget | null,
+): boolean {
+  return Boolean(root && target && !root.contains(target as Node));
+}
+
 // lucide（ISC）图标 path 数据内联，避免运行时依赖。
 const WALLET_PATHS = [
   "M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1",
@@ -313,6 +321,15 @@ export function makeChip(ctx: PluginContext, store: BalanceStore, t: Copy) {
     const react = ctx.react;
     const state = react.useSyncExternalStore(store.subscribe, store.getSnapshot);
     const open = state.panelOpen;
+    const rootRef = react.useRef<HTMLSpanElement>(null);
+    react.useEffect(() => {
+      if (!open) return;
+      const closeOnOutsidePointer = (event: PointerEvent) => {
+        if (isOutsideElement(rootRef.current, event.target)) store.closePanel();
+      };
+      document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+      return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+    }, [open]);
     const snapshot = state.snapshot;
     const route = state.currentRoute;
     const text = !snapshot
@@ -341,7 +358,9 @@ export function makeChip(ctx: PluginContext, store: BalanceStore, t: Copy) {
       react.createElement("span", null, text),
     );
 
-    if (!open) return react.createElement("span", { className: "balance-meter-wrap" }, button);
+    if (!open) {
+      return react.createElement("span", { className: "balance-meter-wrap", ref: rootRef }, button);
+    }
 
     const panel = react.createElement(
       "div",
@@ -391,7 +410,12 @@ export function makeChip(ctx: PluginContext, store: BalanceStore, t: Copy) {
       }),
     );
 
-    return react.createElement("span", { className: "balance-meter-wrap" }, button, panel);
+    return react.createElement(
+      "span",
+      { className: "balance-meter-wrap", ref: rootRef },
+      button,
+      panel,
+    );
   };
 }
 

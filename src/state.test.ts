@@ -478,6 +478,19 @@ describe("BalanceStore coding-plan routes", () => {
 });
 
 describe("BalanceStore inline edit", () => {
+  it("closes the status panel idempotently", () => {
+    const store = new BalanceStore(makeCtx([]), copy("zh-CN"));
+    expect(store.getSnapshot().panelOpen).toBe(false);
+
+    store.togglePanel();
+    expect(store.getSnapshot().panelOpen).toBe(true);
+
+    store.closePanel();
+    expect(store.getSnapshot().panelOpen).toBe(false);
+    store.closePanel();
+    expect(store.getSnapshot().panelOpen).toBe(false);
+  });
+
   it("keeps the draft across store updates and rejects invalid addresses", async () => {
     const store = new BalanceStore(makeCtx([]), copy("zh-CN"));
     await store.init();
