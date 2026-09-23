@@ -9,6 +9,7 @@
  *
  * 检查项（与索引仓 scripts/validate.mjs 同源口径）：
  *   manifest 必填/格式、permissions 形状（基座集 + network:/exec:）、
+ *   展示素材（icon / screenshots 的路径形状与文件存在性）、
  *   main.js 存在与体积上限、JS 黑名单、README/LICENSE、tag↔version。
  */
 
@@ -55,6 +56,11 @@ const JS_BLACKLIST = [
   { re: /import\s*\(\s*['"`]https?:\/\//, label: "远程 import(" },
 ];
 
+/* 展示素材（市场规范 v0.2）：manifest 声明，索引机器人在登记新版本时镜像。 */
+const MAX_SCREENSHOTS = 5;
+const MAX_MEDIA_PATH_CHARS = 1024;
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|avif)$/i;
+
 const errors = [];
 const warnings = [];
 
@@ -88,6 +94,50 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+const isRemotePath = (value) => /^https:\/\//i.test(value);
+
+/**
+ * 校验一条展示素材路径（镜像索引仓 validate.mjs 的 normalizeMediaPath）：
+ * 接受仓库内相对路径或绝对 https URL；拒绝其它 scheme、站内绝对路径（`/…`）、
+ * 协议相对（`//…`）、反斜杠、控制字符、`..` 逃逸与非图片扩展名。
+ * @returns {string|null} 归一化后的路径；null = 不合法。
+ */
+function normalizeMediaPath(raw) {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > MAX_MEDIA_PATH_CHARS) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  if (trimmed.includes("\\")) return null;
+  if (!IMAGE_EXT_RE.test(trimmed.split(/[?#]/, 1)[0])) return null;
+  if (isRemotePath(trimmed)) {
+    try {
+      return new URL(trimmed).toString();
+    } catch {
+      return null;
+    }
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//") || trimmed.startsWith("/")) {
+    return null;
+  }
+  if (trimmed.split("/").some((segment) => segment === "..")) return null;
+  return trimmed;
+}
+
+/** 仓库内相对路径的素材必须是真实存在的文件（远端按默认分支读，本地先拦一道）。 */
+function checkMediaFile(label, value) {
+  const normalized = normalizeMediaPath(value);
+  if (normalized === null) {
+    errors.push(
+      `${label} 不合法（仓库内相对路径或 https URL、图片扩展名 png/jpg/jpeg/webp/gif/svg/avif、≤ ${MAX_MEDIA_PATH_CHARS} 字符）`,
+    );
+    return;
+  }
+  if (!isRemotePath(normalized) && !existsSync(path.join(ROOT, normalized))) {
+    errors.push(`${label} 指向的文件不存在：${normalized}（相对仓库根）`);
+  }
+}
+
 /* ── manifest ── */
 const manifestPath = path.join(dir, "manifest.json");
 if (!existsSync(manifestPath)) {
@@ -117,8 +167,22 @@ if (!existsSync(manifestPath)) {
       errors.push(`tag ${tag} 与 manifest.version ${manifest.version} 不一致`);
     }
   }
+  if (manifest.icon !== undefined) checkMediaFile("icon", manifest.icon);
+  if (manifest.screenshots !== undefined) {
+    if (!Array.isArray(manifest.screenshots)) {
+      errors.push("screenshots 必须是字符串数组");
+    } else if (manifest.screenshots.length > MAX_SCREENSHOTS) {
+      errors.push(`screenshots 超过 ${MAX_SCREENSHOTS} 张`);
+    } else {
+      manifest.screenshots.forEach((shot, index) => checkMediaFile(`screenshots[${index}]`, shot));
+    }
+  }
   console.log(`manifest: ${manifest.id}@${manifest.version} (${manifest.tier})`);
   console.log(`  permissions: ${(manifest.permissions ?? []).join(", ") || "（无）"}`);
+  const media = [manifest.icon, ...(Array.isArray(manifest.screenshots) ? manifest.screenshots : [])].filter(
+    (item) => typeof item === "string",
+  );
+  console.log(`  media: ${media.join(", ") || "（无）"}`);
 }
 
 /* ── main.js（存在时校验体积与黑名单）── */

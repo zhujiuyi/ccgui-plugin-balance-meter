@@ -11,6 +11,8 @@ export interface Copy {
   rowAmount: string;
   rowPlan: string;
   rowDetails: string;
+  /** API 余额场景里明细行的标签（如「充值 x / 赠金 y」），与配额窗口行区分开。 */
+  rowBalanceDetail: string;
   rowEndpoint: string;
   rowCheckedAt: string;
   refresh: string;
@@ -95,6 +97,7 @@ const ZH: Copy = {
   rowAmount: "当前余量",
   rowPlan: "订阅计划",
   rowDetails: "额度窗口",
+  rowBalanceDetail: "余额构成",
   rowEndpoint: "查询地址",
   rowCheckedAt: "最近查询",
   refresh: "立即刷新",
@@ -128,7 +131,7 @@ const ZH: Copy = {
   settingsExecCurl: "curl 可用",
   settingsEngine: "引擎",
   settingsGateway: "网关",
-  settingsKeySource: "凭证来源",
+  settingsKeySource: "凭证",
   refreshAll: "刷新全部路由",
   ok: "是",
   missing: "否",
@@ -183,6 +186,7 @@ const EN: Copy = {
   rowAmount: "Remaining",
   rowPlan: "Plan",
   rowDetails: "Quota windows",
+  rowBalanceDetail: "Balance detail",
   rowEndpoint: "Endpoint",
   rowCheckedAt: "Checked",
   refresh: "Refresh now",
@@ -216,7 +220,7 @@ const EN: Copy = {
   settingsExecCurl: "curl available",
   settingsEngine: "Engine",
   settingsGateway: "Gateway",
-  settingsKeySource: "Credential source",
+  settingsKeySource: "Credential",
   refreshAll: "Refresh all routes",
   ok: "yes",
   missing: "no",

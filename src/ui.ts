@@ -121,7 +121,7 @@ function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo 
   );
   if (snapshot?.planName) entries.push([t.rowPlan, snapshot.planName]);
   if (snapshot?.quotaWindows?.length) entries.push([t.rowDetails, quotaWindows(react, t, snapshot)]);
-  else if (snapshot?.detail) entries.push([t.rowDetails, snapshot.detail]);
+  else if (snapshot?.detail) entries.push([t.rowBalanceDetail, snapshot.detail]);
   entries.push([t.rowCheckedAt, snapshot ? timeLabel(snapshot.checkedAt) : t.neverChecked]);
   return react.createElement(
     "dl",

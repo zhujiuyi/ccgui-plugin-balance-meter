@@ -10,6 +10,22 @@ CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与�
 
 CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安装（见下方「开发」）。
 
+## 界面预览
+
+状态栏面板：按当前路由显示 API 余额或订阅余量（左浅色 / 右深色）。
+
+![状态栏面板](docs/screenshot-1.png)
+
+订阅渠道按窗口展示额度（滚动 / 每周 / 每月）。
+
+![订阅额度窗口](docs/screenshot-2.png)
+
+设置页：当前路由详情、查询地址（可手工修改）、路由清单与诊断。
+
+![设置页](docs/screenshot-3.png)
+
+> 以上为界面示意，数字为示例数据。
+
 ## 它显示什么
 
 - **状态栏 chip**：当前路由的余额/余量（查不到时显示「无法查询」），点开是详情面板
@@ -127,6 +143,10 @@ pnpm validate && pnpm validate:dist  # 本地预检，镜像市场 CI 的门槛
 
 发版：改 `manifest.json` 的 `version` → `git tag <version> && git push origin <version>`；
 仓库自带的 GitHub Action 会构建并把 `main.js` / `manifest.json` / `checksums.txt` 附到 Release。
+
+展示素材：`docs/icon.png` 与 `docs/screenshot-*.png` 由 manifest 的 `icon` / `screenshots`
+声明，市场按仓库**默认分支**读取（替换同名文件不需要发版，改路径要随下次发版登记）；
+图标源文件是 `docs/icon.svg`。
 
 ## 实现备注（给插件作者）
 

@@ -1,7 +1,7 @@
 {
   "id": "balance-meter",
   "name": "余额与余量",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "sdkVersion": "^0.3",
   "minAppVersion": "1.0.5",
   "author": "zhujiuyi",
@@ -9,6 +9,12 @@
   "repo": "zhujiuyi/ccgui-plugin-balance-meter",
   "license": "MIT",
   "keywords": ["balance", "quota", "billing", "gateway", "provider"],
+  "icon": "docs/icon.png",
+  "screenshots": [
+    "docs/screenshot-1.png",
+    "docs/screenshot-2.png",
+    "docs/screenshot-3.png"
+  ],
   "tier": "js",
   "permissions": [
     "storage",
