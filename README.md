@@ -47,8 +47,9 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 ## 工作方式
 
 1. **识别路由**：读 `~/.ccgui-next/config.json` 的 `providers` / `current`；`current` 为
-   `__local_settings_json__` 时改读该引擎自己的配置（claude → `~/.claude/settings.json` 的
-   `ANTHROPIC_BASE_URL`；codex → `~/.codex/config.toml` 与登录状态）。Codex 使用 ChatGPT
+   `__local_settings_json__` 时改读该引擎自己的配置——已覆盖 claude、codex、kimi、grok、
+   dsh（`~/.dsh/.credentials.yaml` 的 API key）、opencode（`~/.local/share/opencode/auth.json`，
+   Go 订阅；Zen 按量无接口）。Codex 使用 ChatGPT
    账号登录且没有自定义 `base_url` 时，调用官方 `codex app-server` 的
    `account/rateLimits/read` 获取订阅额度窗口；Claude Code 使用订阅账号（OAuth）登录且没有
    自定义网关与 API key 时，读 `~/.claude/.credentials.json` 并查询内部用量接口
@@ -65,31 +66,46 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 
 | 供应商 | 网关域名 | 计费 | 余额/余量接口 |
 |---|---|---|---|
-| DeepSeek | api.deepseek.com | API | ✅ `GET /user/balance` |
-| OpenRouter | openrouter.ai | API | ✅ `GET /api/v1/credits` |
+| DeepSeek | api.deepseek.com | API | ✅ `GET /user/balance`（API key 路由，含 dsh 命令行读到的 key） |
+| OpenRouter | openrouter.ai | API | ✅ `GET /api/v1/key`（本 Key 上限剩余）；`/api/v1/credits` 需 Management Key，普通 Key 会 403 |
 | Moonshot / Kimi | api.moonshot.cn / .ai | API | ✅ `GET /v1/users/me/balance` |
 | SiliconFlow | *.siliconflow.cn / .com | API | ✅ `GET /v1/user/info` |
 | OpenAI（官方直连） | api.openai.com | API | ⚠️ `GET /v1/dashboard/billing/subscription`（现多为会话 key 专用） |
 | 智谱 GLM / Z.AI 编码套餐 | open.bigmodel.cn · api.z.ai | 订阅 | ✅ `GET /api/monitor/usage/quota/limit`（5 小时 / 每周；**已用真实套餐实测**） |
 | Z.AI 编码套餐 | api.z.ai | 订阅 | ❌ 无公开接口 |
 | Kimi Coding | api.kimi.com | 订阅 | ✅ `GET /coding/v1/usages`（5 小时 / 每周；API key 或 Kimi Code CLI 登录） |
-| MiniMax 编程套餐 | api.minimaxi.com · api.minimax.io | 订阅 | ✅ `GET /v1/api/openplatform/coding_plan/remains`（5 小时 / 每周） |
+| MiniMax 编程套餐 | api.minimaxi.com · api.minimax.io · api.minimax.chat | 订阅 | ✅ `GET /v1/token_plan/remains`（API key 通道；旧的 `coding_plan/remains` 走控制台 Cookie，作回退） |
 | Xiaomi MiMo | api.xiaomimimo.com | API | ❌ 无公开接口 |
 | Xiaomi MiMo Token Plan | token-plan-{cn,ams,sgp}.xiaomimimo.com | 订阅 | ❌ 无公开接口 |
 | 阿里云百炼 Bailian | *.dashscope.aliyuncs.com | API | ❌ 仅控制台可见 |
 | LongCat | api.longcat.chat | API | ❌ 无公开接口 |
-| OpenCode Go | opencode.ai/zen/go | 订阅 | ✅ `GET /zen/go/v1/usage`（滚动/周/月窗口） |
+| OpenCode Go | opencode.ai/zen/go | 订阅 | ✅ `GET /zen/go/v1/usage`（滚动/周/月窗口；API key 或 OpenCode CLI 登录） |
+| OpenCode Zen（按量） | opencode.ai/zen | API | ❌ 官方无公开余额接口（仅网页控制台） |
 | Anthropic 官方 | api.anthropic.com | API | ❌ 无公开接口 |
 | OpenAI 订阅 | chatgpt.com | 订阅 | ✅ Codex App Server `account/rateLimits/read` |
 | Claude 订阅 | api.anthropic.com（OAuth 登录） | 订阅 | ⚠️ 内部接口 `GET /api/oauth/usage`（实验性，未真机验证） |
 | Grok 订阅（Grok CLI 登录） | cli-chat-proxy.grok.com | 订阅 | ✅ `GET /v1/billing?format=credits`（信用池周期） |
 | xAI Grok | api.x.ai | API | ❌ 无公开接口 |
 | Groq / Mistral / Together / Google Gemini | api.groq.com · api.mistral.ai · api.together.xyz · generativelanguage.googleapis.com | API | ❌ 无公开接口 |
-| 未识别的中转站 | 任意其它域名 | 由返回值推断 | 依次探测 New-API `/api/user/self`、OpenAI 兼容 billing、`/api/v1/credits`、`/api/user/subscription`、`/api/usage` |
+| 未识别的中转站 | 任意其它域名 | 由返回值推断 | 依次探测（见下） |
 
-> `❌` 的判定依据：对这些域名做过无密钥 GET 探测，常见余额路径均为 404（个别站点任何路径都回
-> 200，则由响应结构解析拦截）。若某家后来上线了接口，在设置里把路径填进「自定义余量接口」即可，
-> 支持 `{base}` / `{origin}` 占位符，无需改代码。
+中转站探测顺序（2026-10 复核后重排，均只用站点发给用户的 API key）：
+
+1. `GET /api/usage/token/`（New-API ≥ v0.9.0，一次请求直出剩余额度）
+2. `GET /v1/dashboard/billing/subscription` + `/usage`（剩余 = 总额度 − 已用美分）
+3. `GET /v1/usage`（Sub2API 系，可带 5 小时 / 每日 / 每周窗口）
+4. `GET /api/v1/me/quota`（claude-code-hub，`X-Api-Key` 头）
+5. `GET /dashboard/billing/credit_grants`（CloseAI 系）
+6. `GET /api/v1/credits`
+7. `GET /api/user/self`（仅个别变体支持；正版 New-API 需要面板访问令牌，`sk-` 令牌打不通）
+
+前两条会先免认证地读一次 `/api/status`，按站点自己的 `quota_per_unit` 与 `quota_display_type`
+换算——New-API 的记账单位站主可改，硬编码 500000 会差若干个数量级。
+
+> `❌` 的判定依据：2026-10 复核，对每个域名做了「无凭据探测 + 伪装路径对照」区分
+> 「路由不存在」与「需要认证」，并对照官方文档与上游实现源码；结果与 2026-09 首次普查一致。
+> 若某家后来上线了接口，在设置里把路径填进「自定义余量接口」即可，支持 `{base}` / `{origin}`
+> 占位符，无需改代码。
 
 ## 权限说明（重要）
 
@@ -112,7 +128,7 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
-| **Windows** | ✅ 已实测 | 用 `cmd /d /c echo %USERPROFILE%` 定位家目录；家目录为 `C:\Users\x` 时路径沿用 `\`（读取时转成 `file:///C:/…`）。其中**智谱 GLM 套餐通道已用真实套餐（Lite）端到端验证**；Claude 订阅、Kimi、MiniMax、Grok 四条通道目前仅单测与夹具覆盖。 |
+| **Windows** | ✅ 已实测 | 用 `cmd /d /c echo %USERPROFILE%` 定位家目录；家目录为 `C:\Users\x` 时路径沿用 `\`（读取时转成 `file:///C:/…`）。其中**智谱 GLM 套餐通道已用真实套餐（Lite）端到端验证**，**OpenCode Go 与 Sub2API 系中转已用真实账号验证**；Claude 订阅、Kimi、MiniMax、Grok 四条通道目前仅单测与夹具覆盖。 |
 | **macOS / Linux** | ⚠️ 已适配，尚未真机验证 | 改用 `sh -c 'printf %s "$HOME"'`、路径用 `/`；curl 参数本身跨平台通用。 |
 
 平台判断读 webview 的 `navigator.userAgentData.platform` / `navigator.userAgent`，判不出来时按
@@ -128,6 +144,10 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 - Anthropic Pro / Max 没有公开余量接口；Codex 的 ChatGPT 登录模式可通过官方 App Server
   显示主、次两个额度窗口。若本机 `codex` 版本过旧或命令不在 PATH，查询会失败并显示原因。
 - 中转站的余量接口差异极大：探测失败的可在设置里用「自定义余量接口」手工指定。
+- 中转站对**额度耗尽的令牌**常直接返回 401，插件会显示为查询失败而不是 0（这是站点行为，不是插件算错）。
+- New-API 的**订阅制**（`/api/subscription/self`）只接受面板访问令牌，站点发给用户的 `sk-` 令牌打不通，因此套餐窗口暂无支持。
+- xAI 的团队余额在 Management API：需要另配 management key 与 team id，插件不自动读取。
+- 其余引擎（pi / omp / qoder / agy）暂未接入：omp 的凭证在 SQLite 里、qoder 需要手贴 Cookie 或读桌面日志、agy 的令牌有效期只有 1 小时且插件不代刷新。
 
 ## 开发
 

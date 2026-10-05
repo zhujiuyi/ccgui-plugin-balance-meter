@@ -108,6 +108,8 @@ interface LocalRoute {
   credentialSource: string;
   source: string;
   queryKind?: RouteInfo["queryKind"];
+  /** 未拿到网关时的具体原因（比通用文案更有用，例如登录已过期）。 */
+  note?: string;
 }
 
 async function readClaudeLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
@@ -221,11 +223,84 @@ async function readGrokLocal(ctx: PluginContext, home: string): Promise<LocalRou
   return { gateway: null, credential: null, credentialSource: "", source: path };
 }
 
+/**
+ * DeepSeek Harness（dsh）本地凭证：`$DSH_HOME/.credentials.yaml`，默认 `~/.dsh`。
+ * 只认 `refs.DEEPSEEK_API_KEY`——它能直接复用 DeepSeek 的余额接口；
+ * `records.deepseek-account-platform` 里的账号令牌要打 platform.deepseek.com
+ * 的内部接口（还需 x-dsh-auth-token 头），未经验证，这里不碰。
+ */
+async function readDshLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
+  const path = joinPath(home, ".dsh", ".credentials.yaml");
+  const text = (await readText(ctx, path)) ?? "";
+  const match = /^\s*DEEPSEEK_API_KEY\s*:\s*["']?([^"'\s#]+)["']?\s*$/m.exec(text);
+  const apiKey = match?.[1]?.trim();
+  if (!apiKey) {
+    return {
+      gateway: null,
+      credential: null,
+      credentialSource: "",
+      source: path,
+      note: `dsh: 未在 ${path} 找到 API Key（账号令牌通道暂不支持）`,
+    };
+  }
+  return {
+    gateway: "https://api.deepseek.com",
+    credential: apiKey,
+    credentialSource: `${path} → refs.DEEPSEEK_API_KEY`,
+    source: path,
+  };
+}
+
+/**
+ * OpenCode CLI 凭证：`~/.local/share/opencode/auth.json`（Windows 同路径，
+ * 由 xdg-basedir 决定、无平台分支）。`opencode-go` 是 Go 订阅，`opencode` 是
+ * Zen 按量付费——后者没有公开的余额接口，但仍给出网关好让界面报出明确原因。
+ * 过期的登录只提示重新登录，绝不代刷新（会轮换 refresh token）。
+ */
+async function readOpencodeLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
+  const path = joinPath(home, ".local", "share", "opencode", "auth.json");
+  const auth = await readJson(ctx, path);
+  const go = record(auth?.["opencode-go"]);
+  const goKey = str(go?.key);
+  const access = str(go?.access);
+  const expires = typeof go?.expires === "number" ? go.expires : null;
+  const credential = goKey ?? access;
+  if (credential && (goKey !== null || expires === null || expires > Date.now())) {
+    return {
+      gateway: "https://opencode.ai/zen/go/v1",
+      credential,
+      credentialSource: `${path} → opencode-go`,
+      source: path,
+    };
+  }
+  if (access && expires !== null) {
+    return {
+      gateway: null,
+      credential: null,
+      credentialSource: "",
+      source: path,
+      note: `opencode: OpenCode 登录已过期（${path}），请在 CLI 重新登录`,
+    };
+  }
+  const zenKey = str(record(auth?.opencode)?.key);
+  if (zenKey) {
+    return {
+      gateway: "https://opencode.ai/zen/v1",
+      credential: zenKey,
+      credentialSource: `${path} → opencode`,
+      source: path,
+    };
+  }
+  return { gateway: null, credential: null, credentialSource: "", source: path };
+}
+
 const LOCAL_READERS: Record<string, (ctx: PluginContext, home: string) => Promise<LocalRoute>> = {
   claude: readClaudeLocal,
   codex: readCodexLocal,
   kimi: readKimiLocal,
   grok: readGrokLocal,
+  dsh: readDshLocal,
+  opencode: readOpencodeLocal,
 };
 
 /**
@@ -241,7 +316,9 @@ function codingPlanQueryKindFor(gateway: string): RouteInfo["queryKind"] | null 
     if (host === "open.bigmodel.cn" || host === "bigmodel.cn" || host === "api.z.ai" || host === "z.ai") {
       return "zhipu-quota";
     }
-    if (host === "api.minimaxi.com" || host === "api.minimax.io") return "minimax-plan";
+    if (host === "api.minimaxi.com" || host === "api.minimax.io" || host === "api.minimax.chat") {
+      return "minimax-plan";
+    }
     return null;
   } catch {
     return null;
@@ -345,7 +422,7 @@ export async function resolveRoutes(
         ),
       );
     } else {
-      diagnostics.push(`${engine}: 未从 ${local.source} 读到网关地址`);
+      diagnostics.push(local.note ?? `${engine}: 未从 ${local.source} 读到网关地址`);
     }
   }
 

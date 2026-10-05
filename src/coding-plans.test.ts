@@ -408,16 +408,19 @@ describe("readZhipuQuota", () => {
 });
 
 describe("readMinimaxQuota", () => {
-  it("calls the coding_plan remains endpoint with a bearer key", async () => {
+  const MINIMAX_BODY = JSON.stringify({
+    base_resp: { status_code: 0 },
+    model_remains: [
+      { model_name: "general", current_interval_remaining_percent: 72.5, end_time: 1_790_000_000_000, current_weekly_status: 3 },
+    ],
+  });
+
+  // `coding_plan/remains` 会忽略 Authorization、只在带控制台 Cookie 时可用
+  // （发无效 Bearer 也回 "cookie is missing, log in again"）；API key 通道是
+  // `token_plan/remains`。旧路径留作回退，两者响应结构一致。
+  it("asks the token_plan endpoint first and sends the bearer key", async () => {
     const calls: ExecCall[] = [];
-    const ctx = makeCtx(calls, () => ({
-      stdout: `${JSON.stringify({
-        base_resp: { status_code: 0 },
-        model_remains: [
-          { model_name: "general", current_interval_remaining_percent: 72.5, end_time: 1_790_000_000_000, current_weekly_status: 3 },
-        ],
-      })}\n__HTTP_STATUS__200`,
-    }));
+    const ctx = makeCtx(calls, () => ({ stdout: `${MINIMAX_BODY}\n__HTTP_STATUS__200` }));
 
     const result = await readMinimaxQuota(ctx, "https://api.minimaxi.com", "mm-key-1");
 
@@ -427,9 +430,26 @@ describe("readMinimaxQuota", () => {
     ]);
     const call = httpCalls(calls)[0];
     expect(call?.args[call.args.length - 1]).toBe(
-      "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+      "https://api.minimaxi.com/v1/token_plan/remains",
     );
     expect(call?.args.join(" ")).toContain("Authorization: Bearer mm-key-1");
+  });
+
+  it("falls back to the legacy coding_plan path when the API-key endpoint has no plan", async () => {
+    const calls: ExecCall[] = [];
+    const ctx = makeCtx(calls, (url) =>
+      url.endsWith("/v1/token_plan/remains")
+        ? { stdout: `{"base_resp":{"status_code":1004,"status_msg":"login fail"}}\n__HTTP_STATUS__200` }
+        : { stdout: `${MINIMAX_BODY}\n__HTTP_STATUS__200` },
+    );
+
+    const result = await readMinimaxQuota(ctx, "https://api.minimaxi.com", "mm-key-1");
+
+    expect(result.windows).toHaveLength(1);
+    expect(httpCalls(calls).map((call) => call.args[call.args.length - 1])).toEqual([
+      "https://api.minimaxi.com/v1/token_plan/remains",
+      "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+    ]);
   });
 });
 

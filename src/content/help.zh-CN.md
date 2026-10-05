@@ -4,19 +4,22 @@
 
 ## 能查到什么
 
-- DeepSeek、Moonshot / Kimi、SiliconFlow：显示账户余额。
-- OpenRouter：显示总额度与已用额度。
-- OpenCode Go 订阅：显示滚动、每周、每月三个额度窗口。
+- DeepSeek（含 dsh 命令行）、Moonshot / Kimi、SiliconFlow：显示账户余额。
+- OpenRouter：显示本 Key 的额度上限剩余；账户总额度需要 Management Key，普通 Key 拿不到时会说明原因。
+- OpenCode Go 订阅：显示滚动、每周、每月三个额度窗口；本机登录过 OpenCode 命令行时也会自动读取登录信息。
 - OpenAI ChatGPT 订阅：Codex 用 ChatGPT 账号登录时，显示 5 小时与每周额度。
 - Claude 订阅：Claude Code 用订阅账号登录时，显示 5 小时与 7 天额度；该渠道依赖官方未公开的接口，官方更新后可能失效。
 - Kimi For Coding：配置了 API Key 就能查；本机登录过 Kimi Code CLI 时也会自动读取登录信息。显示 5 小时与每周额度。
 - 智谱 GLM / Z.AI 编码套餐：显示 5 小时与每周额度，需要使用套餐自己的 API Key。
-- MiniMax 编程套餐：显示 5 小时与每周额度。
+- MiniMax 编程套餐：显示 5 小时与每周额度，需要使用套餐自己的 API Key。
 - Grok 订阅：本机登录过 Grok CLI 时，显示当前计费周期的额度。
+- 常见中转站：会尝试多种常见接口，命中后显示余额，部分站还能显示 5 小时 / 每日 / 每周窗口。
 
 ## 查不到怎么办
 
-- 未识别的中转站（New-API、One-API 等）：插件会依次尝试几种常见的查询方式，能不能查到取决于该中转站是否提供，不属于确定支持。
+- 中转站（New-API、One-API 及其各种分支，以及 Sub2API、claude-code-hub、CloseAI 等）：插件会依次尝试几种常见的查询方式，能不能查到取决于该中转站是否提供，不属于确定支持。
+- 令牌额度用尽的站点可能连余额都拒绝返回，这时会显示为查询失败而不是 0 余额。
+- OpenCode Zen 按量付费：官方没有公开的余额接口，插件会直接说明查不到。
 - 如果你的服务商有查询接口，可以在插件设置里填「查询地址」，保存后立即生效，支持 {base} 和 {origin} 占位符。
 - 套餐里还没开始使用的额度窗口可能不显示重置时间，属于正常现象。
 

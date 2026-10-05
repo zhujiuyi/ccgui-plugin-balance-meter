@@ -4,19 +4,22 @@ The plugin follows the channel your current session actually uses and shows its 
 
 ## What it can show
 
-- DeepSeek, Moonshot / Kimi, SiliconFlow: account balance.
-- OpenRouter: total and used credits.
-- OpenCode Go subscription: rolling, weekly, and monthly quota windows.
+- DeepSeek (including the dsh CLI), Moonshot / Kimi, SiliconFlow: account balance.
+- OpenRouter: the remaining limit of this key; account credits need a management key, and the plugin says so when an ordinary key cannot read them.
+- OpenCode Go subscription: rolling, weekly, and monthly quota windows; it also reads the local OpenCode CLI login automatically.
 - OpenAI ChatGPT subscription: when Codex signs in with a ChatGPT account, the 5-hour and weekly windows.
 - Claude subscription: when Claude Code signs in with a subscription account, the 5-hour and 7-day windows. This channel relies on an undocumented official endpoint and may stop working after an update.
 - Kimi For Coding: works with an API key, or reads the local Kimi Code CLI login automatically. Shows the 5-hour and weekly windows.
 - Zhipu GLM / Z.AI coding plan: the 5-hour and weekly windows, using the plan's own API key.
-- MiniMax coding plan: the 5-hour and weekly windows.
+- MiniMax coding plan: the 5-hour and weekly windows, using the plan's own API key.
 - Grok subscription: when the Grok CLI is signed in locally, the current billing period's usage.
+- Common relays: several well-known query styles are tried, and a hit shows the balance — some relays also expose 5-hour, daily, and weekly windows.
 
 ## When it can't find a number
 
-- Unrecognized relays (New-API, One-API and similar): the plugin tries a few common query styles; whether it works depends on the relay, and it is not guaranteed support.
+- Relays (New-API, One-API and their forks, plus Sub2API, claude-code-hub, CloseAI and similar): the plugin tries a few common query styles in turn; whether it works depends on the relay, and it is not guaranteed support.
+- A relay whose token is exhausted may refuse to report a balance at all; that shows as a failed query rather than a zero balance.
+- OpenCode Zen pay-as-you-go: there is no public balance endpoint, and the plugin says so.
 - If your provider has a query endpoint, set a custom endpoint in the plugin settings — it takes effect immediately and supports the {base} and {origin} placeholders.
 - A quota window that has not been used yet may show no reset time; that is expected.
 

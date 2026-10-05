@@ -26,6 +26,7 @@ import {
   type ParsedAmount,
   type Probe,
   type ProbeContext,
+  type ProbeMeta,
   type QuotaWindow,
 } from "./providers";
 import { originOf, resolveRoutes, type RouteInfo } from "./routes";
@@ -709,7 +710,10 @@ export class BalanceStore {
         errors.push(`${probe.label}: 响应不是 JSON`);
         continue;
       }
-      const parsed = probe.parse(json);
+      // 少数探针要先问一句才能正确换算（如中转站的记账单位），
+      // 只在主请求成功后执行，失败项以 null 占位。
+      const meta = probe.meta ? await this.fetchProbeMeta(probe.meta, probeCtx) : undefined;
+      const parsed = probe.parse(json, meta, probeCtx);
       if (!parsed) {
         errors.push(`${probe.label}: 响应结构未识别`);
         continue;
@@ -753,6 +757,33 @@ export class BalanceStore {
       reason ?? (errors.slice(-2).join("; ") || this.t.unavailable),
       endpointSource,
     );
+  }
+
+  /**
+   * 探针的可选前置请求（如 New-API 的 /api/status、/v1/dashboard/billing/usage）。
+   * 任一步失败只记 null，由探针自己的 parse 决定还能不能出结果——
+   * 前置失败绝不能让整条查询变成异常。
+   */
+  private async fetchProbeMeta(steps: ProbeMeta[], probeCtx: ProbeContext): Promise<unknown[]> {
+    const results: unknown[] = [];
+    for (const step of steps) {
+      const url = step.build(probeCtx);
+      if (!url) {
+        results.push(null);
+        continue;
+      }
+      const { status, body } = await httpGet(this.ctx, url, step.headers(probeCtx));
+      if (status < 200 || status >= 300) {
+        results.push(null);
+        continue;
+      }
+      try {
+        results.push(JSON.parse(body));
+      } catch {
+        results.push(null);
+      }
+    }
+    return results;
   }
 
   private snapshotFrom(

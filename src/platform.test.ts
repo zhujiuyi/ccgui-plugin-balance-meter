@@ -314,6 +314,136 @@ describe("route resolution: coding-plan channels", () => {
     });
   });
 
+  it("maps the mainland MiniMax host to the plan adapter too", async () => {
+    const configured = JSON.stringify({
+      claude: {
+        current: "mm",
+        providers: { mm: { name: "MiniMax", baseUrl: "https://api.minimax.chat/anthropic", apiKey: "mm-key" } },
+      },
+    });
+    const ctx = makeCtx((_bin, args) => {
+      const url = args[args.length - 1] ?? "";
+      if (url.includes(".ccgui-next/config.json")) return { code: 0, stdout: configured, stderr: "" };
+      return { code: 0, stdout: "", stderr: "" };
+    });
+
+    const { routes } = await resolveRoutes(ctx, "C:\\Users\\me");
+
+    expect(routes[0]).toMatchObject({
+      engine: "claude",
+      gateway: "https://api.minimax.chat/anthropic",
+      queryKind: "minimax-plan",
+    });
+  });
+
+  it("recognises the DeepSeek Harness (dsh) API key", async () => {
+    const ctx = makeCtx((_bin, args) => {
+      const url = args[args.length - 1] ?? "";
+      if (url.includes(".ccgui-next/config.json")) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({ dsh: { current: "__local_settings_json__", providers: {} } }),
+          stderr: "",
+        };
+      }
+      // dsh 的凭证是 YAML，只取其中的 API key 行（不引 YAML 依赖）。
+      if (url.endsWith(".dsh/.credentials.yaml")) {
+        return {
+          code: 0,
+          stdout: [
+            "version: 1",
+            "refs:",
+            "  DEEPSEEK_API_KEY: sk-dsh-key-1",
+            "records:",
+            "  deepseek-account-platform/default:",
+            "    kind: grant",
+            "    payload:",
+            '      token: "account-token-should-not-be-used"',
+            "",
+          ].join("\n"),
+          stderr: "",
+        };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    });
+
+    const { routes, diagnostics } = await resolveRoutes(ctx, "C:\\Users\\me");
+
+    expect(diagnostics).toEqual([]);
+    expect(routes[0]).toMatchObject({
+      engine: "dsh",
+      gateway: "https://api.deepseek.com",
+      credential: "sk-dsh-key-1",
+    });
+  });
+
+  it("recognises the OpenCode Go login for the opencode engine", async () => {
+    const ctx = makeCtx((_bin, args) => {
+      const url = args[args.length - 1] ?? "";
+      if (url.includes(".ccgui-next/config.json")) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({ opencode: { current: "__local_settings_json__", providers: {} } }),
+          stderr: "",
+        };
+      }
+      if (url.endsWith(".local/share/opencode/auth.json")) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            "opencode-go": { type: "api", key: "sk-opencode-go-key" },
+          }),
+          stderr: "",
+        };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    });
+
+    const { routes, diagnostics } = await resolveRoutes(ctx, "C:\\Users\\me");
+
+    expect(diagnostics).toEqual([]);
+    expect(routes[0]).toMatchObject({
+      engine: "opencode",
+      gateway: "https://opencode.ai/zen/go/v1",
+      credential: "sk-opencode-go-key",
+    });
+  });
+
+  it("keeps an expired OpenCode login but never refreshes it", async () => {
+    const ctx = makeCtx((_bin, args) => {
+      const url = args[args.length - 1] ?? "";
+      if (url.includes(".ccgui-next/config.json")) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({ opencode: { current: "__local_settings_json__", providers: {} } }),
+          stderr: "",
+        };
+      }
+      if (url.endsWith(".local/share/opencode/auth.json")) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            "opencode-go": {
+              type: "oauth",
+              access: "expired-access",
+              refresh: "refresh-token",
+              expires: 1_000_000,
+            },
+          }),
+          stderr: "",
+        };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    });
+
+    const { routes, diagnostics } = await resolveRoutes(ctx, "C:\\Users\\me");
+
+    expect(routes).toHaveLength(0);
+    expect(diagnostics.join("\n")).toContain("opencode");
+    // 只提示重新登录，绝不代刷新（会轮换 refresh token 破坏 CLI 登录态）
+    expect(diagnostics.join("\n")).not.toContain("refresh-token");
+  });
+
   it("recognises the Grok CLI login for the grok engine", async () => {
     const ctx = makeCtx((_bin, args) => {
       const url = args[args.length - 1] ?? "";

@@ -14,7 +14,8 @@
  * 实现依据（逐条对照过上游实现，非猜测）：
  *  - Kimi：MoonshotAI/kimi-cli 与 farion1231/cc-switch 的 /coding/v1/usages
  *  - 智谱：cc-switch 的 /api/monitor/usage/quota/limit（unit=3 → 5h，unit=6 → 周）
- *  - MiniMax：cc-switch 的 /v1/api/openplatform/coding_plan/remains
+ *  - MiniMax：API key 走 /v1/token_plan/remains（旧 coding_plan/remains 是控制台
+ *    Cookie 通道，留作回退），字段口径见 cc-switch 的 parse_minimax_tiers
  *  - Grok：tokentracker-cli 的 cli-chat-proxy /v1/billing?format=credits
  */
 
@@ -216,8 +217,9 @@ export function parseZhipuQuota(body: string): Pick<PlanQuota, "windows" | "plan
 /* ────────────────────────── MiniMax ────────────────────────── */
 
 /**
- * `GET https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains`
- * （国际版 api.minimax.io，Bearer key）。
+ * `GET https://api.minimaxi.com/v1/token_plan/remains`（国际版 api.minimax.io，
+ * Bearer key；旧路径 `/v1/api/openplatform/coding_plan/remains` 见
+ * MINIMAX_PLAN_PATHS）。两条路径的响应结构一致。
  * 响应给的是**剩余**百分比：5 小时桶 `current_interval_remaining_percent`，
  * 周桶 `current_weekly_remaining_percent`（仅 current_weekly_status=1 时有效）。
  */
@@ -434,7 +436,15 @@ export async function readZhipuQuota(
   return fromStatus(response.status, () => parseZhipuQuota(response.body));
 }
 
-const MINIMAX_PLAN_PATH = "/v1/api/openplatform/coding_plan/remains";
+/**
+ * API key 通道是 `token_plan/remains`；旧的 `coding_plan/remains` 走控制台
+ * Cookie（发无效 Bearer 时它仍回 "cookie is missing, log in again"，
+ * 说明鉴权层根本不看 Authorization）。旧路径留作回退，响应结构一致。
+ */
+const MINIMAX_PLAN_PATHS = [
+  "/v1/token_plan/remains",
+  "/v1/api/openplatform/coding_plan/remains",
+];
 
 /** 查询 MiniMax 编程套餐余量（国内 api.minimaxi.com / 国际 api.minimax.io）。 */
 export async function readMinimaxQuota(
@@ -445,11 +455,17 @@ export async function readMinimaxQuota(
   const key = typeof apiKey === "string" ? apiKey.trim() : "";
   if (!key) return missing();
   const base = origin.replace(/\/+$/, "");
-  const response = await httpGet(ctx, `${base}${MINIMAX_PLAN_PATH}`, {
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-  });
-  return fromStatus(response.status, () => parseMinimaxPlan(response.body));
+  let last: PlanQuota | null = null;
+  for (const path of MINIMAX_PLAN_PATHS) {
+    const response = await httpGet(ctx, `${base}${path}`, {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    });
+    const quota = fromStatus(response.status, () => parseMinimaxPlan(response.body));
+    if (quota.windows) return quota;
+    last = quota;
+  }
+  return last ?? missing();
 }
 
 const GROK_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
