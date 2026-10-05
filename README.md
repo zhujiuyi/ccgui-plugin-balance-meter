@@ -54,14 +54,14 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
    `account/rateLimits/read` 获取订阅额度窗口；Claude Code 使用订阅账号（OAuth）登录且没有
    自定义网关与 API key 时，读 `~/.claude/.credentials.json` 并查询内部用量接口
    `api/oauth/usage`（5 小时 / 7 天窗口；实验性，令牌过期只提示重新登录、不代为刷新）。
-2. **判断供应商**：网关命中已知编程套餐渠道（Kimi Coding / 智谱 GLM·Z.AI / MiniMax）
-   时直接走各自的套餐额度接口（见下表）；否则按网关主机名匹配内置供应商目录，未命中则按
-   New-API / One-API 系中转的常见余量接口逐个探测。
+2. **判断供应商**：网关命中已知编程套餐渠道（Kimi Coding / 智谱 GLM·Z.AI / MiniMax）或
+   Claude / Codex 的订阅登录时，走各自的额度适配器（见下表）；否则按网关主机名匹配内置
+   供应商目录，未命中则按常见中转站的余量接口**依次探测**（顺序见下表下方）。
 3. **查询与缓存**：命中即按路由缓存该接口地址，下次直接使用；地址失效会自动重探。
 
 ## 收录的供应商（与 ccgui 自定义渠道预设表对齐）
 
-**没有公开余额接口的也一律收录**，这样提示是「XX 未提供公开的余额/余量查询接口」，
+**没有公开余额接口的也一律收录**，这样提示是「XX 官方未提供余额接口」这类确定结论，
 而不是含糊的「未知供应商」。
 
 | 供应商 | 网关域名 | 计费 | 余额/余量接口 |
@@ -116,8 +116,8 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
    本质上无法预知域名，所以必须走 exec 出口；
 2. `cmd` / `sh` 仅用于取用户目录（`echo %USERPROFILE%` / `printf %s "$HOME"`）；
 3. `curl` 用于读 `~/.ccgui-next/config.json` 与各引擎配置（含 `~/.claude/.credentials.json`、
-   `~/.kimi-code/credentials/kimi-code.json`、`~/.grok/auth.json`），以及向**该路由自己的供应商**
-   发起只读查询；
+   `~/.kimi-code/credentials/kimi-code.json`、`~/.grok/auth.json`、`~/.dsh/.credentials.yaml`、
+   `~/.local/share/opencode/auth.json`），以及向**该路由自己的供应商**发起只读查询；
 4. Codex 官方 ChatGPT 登录模式由 PowerShell / sh 向本机 `codex app-server` 写入官方 JSON-RPC
    请求来查询额度；查询过程不把登录 Token 放进命令行，也不自行向远端传递 Token。Claude 订阅
    令牌只作为 curl 鉴权头发送给 Anthropic 自己的用量接口，不写日志、不入插件存储；
@@ -148,6 +148,32 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 - New-API 的**订阅制**（`/api/subscription/self`）只接受面板访问令牌，站点发给用户的 `sk-` 令牌打不通，因此套餐窗口暂无支持。
 - xAI 的团队余额在 Management API：需要另配 management key 与 team id，插件不自动读取。
 - 其余引擎（pi / omp / qoder / agy）暂未接入：omp 的凭证在 SQLite 里、qoder 需要手贴 Cookie 或读桌面日志、agy 的令牌有效期只有 1 小时且插件不代刷新。
+
+## 更新记录
+
+### 0.2.2
+
+- **常见中转站的支持面扩大**：按「API key 真的打得通」的顺序探测，并优先采用站点自己声明的记账单位。
+  支持 New-API（含一次请求直出余额的令牌额度接口）、Sub2API、claude-code-hub、CloseAI 等；
+  部分中转站还能显示 5 小时 / 每日 / 每周窗口。
+- **修正四处查询错误**：
+  - OpenRouter 改为显示本 Key 的额度上限剩余（账户总额度接口需要 Management Key，普通 Key 会失败）。
+  - MiniMax 编程套餐改用 API key 通道，修复此前查不到的问题。
+  - SiliconFlow 改取账户总额（此前会先取到最小的赠金字段）。
+  - Moonshot 国际站币种正确显示为美元（此前固定标成人民币）。
+- **新增两个引擎的本地登录识别**：dsh（DeepSeek 命令行）与 OpenCode；
+  OpenCode Zen 按量付费会明确说明查不到，而不是含糊报错。
+- **更正「查不到」的原因说明**：Anthropic、智谱、Kimi、MiniMax 等此前的提示与实际能力不符。
+- 令牌额度已用尽的站点可能直接拒绝返回余额，此时显示为查询失败，而不是 0 余额。
+
+### 0.2.1
+
+- 市场展示素材（图标与效果图）；点击面板外部可关闭面板。
+
+### 0.2.0
+
+- 支持订阅类渠道的额度查询：ChatGPT、Claude、OpenCode Go、Kimi For Coding、
+  智谱 GLM / Z.AI、MiniMax、Grok。
 
 ## 开发
 
