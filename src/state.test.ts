@@ -353,6 +353,89 @@ describe("BalanceStore coding-plan routes", () => {
     expect(snapshot?.error).toBeNull();
   }, 30_000);
 
+  it("shows the Open Design account balance from the client's control-key config", async () => {
+    const store = new BalanceStore(
+      quotaCtx(
+        {
+          claude: {
+            current: "opendesign",
+            providers: {
+              opendesign: {
+                name: "OpenDesign",
+                baseUrl: "https://amr-link.open-design.ai",
+                apiKey: "sk-amr-runtime",
+              },
+            },
+          },
+        },
+        [
+          [
+            ".amr/config.json",
+            JSON.stringify({
+              profiles: {
+                prod: {
+                  controlKey: "ctl-prod",
+                  runtimeKey: "sk-amr-runtime",
+                  apiUrl: "https://amr-api.open-design.ai",
+                },
+              },
+            }),
+          ],
+        ],
+        [
+          [
+            "https://amr-api.open-design.ai/api/v1/billing/summary",
+            JSON.stringify({
+              balanceUsd: "1.5000",
+              creditsPerUsd: 10000,
+              totalAvailableCreditsUsd: "1.5000",
+              subscriptionCreditsUsd: "1.0000",
+              rechargeCreditsUsd: "0.5000",
+              membershipTier: "go",
+            }),
+          ],
+        ],
+      ),
+      copy("zh-CN"),
+    );
+    await store.init();
+
+    const snapshot = store.getSnapshot().snapshot;
+    expect(snapshot?.kind).toBe("balance");
+    expect(snapshot?.providerName).toBe("Open Design");
+    expect(snapshot?.currency).toBe("USD");
+    expect(snapshot?.amount).toBe(1.5);
+    expect(snapshot?.planName).toBe("Open Design Go");
+    expect(snapshot?.error).toBeNull();
+  }, 30_000);
+
+  it("tells the user to sign in to Open Design when the client config is missing", async () => {
+    const store = new BalanceStore(
+      quotaCtx(
+        {
+          claude: {
+            current: "opendesign",
+            providers: {
+              opendesign: {
+                name: "OpenDesign",
+                baseUrl: "https://amr-link.open-design.ai",
+                apiKey: "sk-amr-runtime",
+              },
+            },
+          },
+        },
+        [],
+        [],
+      ),
+      copy("zh-CN"),
+    );
+    await store.init();
+
+    const snapshot = store.getSnapshot().snapshot;
+    expect(snapshot?.kind).toBe("unavailable");
+    expect(snapshot?.error ?? "").toContain("Open Design");
+  }, 30_000);
+
   it("shows the Kimi For Coding windows for a CLI login", async () => {
     const store = new BalanceStore(
       quotaCtx(

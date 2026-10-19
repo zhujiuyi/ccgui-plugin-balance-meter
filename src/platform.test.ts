@@ -444,6 +444,32 @@ describe("route resolution: coding-plan channels", () => {
     expect(diagnostics.join("\n")).not.toContain("refresh-token");
   });
 
+  it("routes an Open Design channel to the AMR billing adapter", async () => {
+    const configured = JSON.stringify({
+      claude: {
+        current: "opendesign",
+        providers: {
+          opendesign: { name: "OpenDesign", baseUrl: "https://amr-link.open-design.ai", apiKey: "sk-amr-x" },
+        },
+      },
+    });
+    const ctx = makeCtx((_bin, args) => {
+      const url = args[args.length - 1] ?? "";
+      if (url.includes(".ccgui-next/config.json")) return { code: 0, stdout: configured, stderr: "" };
+      return { code: 0, stdout: "", stderr: "" };
+    });
+
+    const { routes } = await resolveRoutes(ctx, "C:\\Users\\me");
+
+    expect(routes[0]).toMatchObject({
+      engine: "claude",
+      gateway: "https://amr-link.open-design.ai",
+      queryKind: "opendesign-billing",
+      // runtime key 仍保留给网关查询用，但账单查询只会用 ~/.amr/config.json 的 controlKey
+      credential: "sk-amr-x",
+    });
+  });
+
   it("recognises the Grok CLI login for the grok engine", async () => {
     const ctx = makeCtx((_bin, args) => {
       const url = args[args.length - 1] ?? "";

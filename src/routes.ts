@@ -31,6 +31,7 @@ export interface RouteInfo {
    *  - codex-rate-limits：Codex 官方 app-server 的 ChatGPT 订阅额度
    *  - claude-oauth-usage：Claude 订阅 OAuth 的内部用量接口（实验性）
    *  - kimi-usage / zhipu-quota / minimax-plan / grok-billing：编程套餐额度
+   *  - opendesign-billing：Open Design 客户端登录的账户余额（凭证在 ~/.amr/config.json）
    */
   queryKind:
     | "http"
@@ -39,7 +40,8 @@ export interface RouteInfo {
     | "kimi-usage"
     | "zhipu-quota"
     | "minimax-plan"
-    | "grok-billing";
+    | "grok-billing"
+    | "opendesign-billing";
 }
 
 export const LOCAL_SETTINGS_SENTINEL = "__local_settings_json__";
@@ -318,6 +320,10 @@ function codingPlanQueryKindFor(gateway: string): RouteInfo["queryKind"] | null 
     }
     if (host === "api.minimaxi.com" || host === "api.minimax.io" || host === "api.minimax.chat") {
       return "minimax-plan";
+    }
+    // Open Design（AMR / Vela）：网关只做推理，余额要读客户端登录的 controlKey。
+    if (host.includes("open-design.ai") || host.includes("powerformer.net")) {
+      return "opendesign-billing";
     }
     return null;
   } catch {

@@ -20,6 +20,7 @@ import {
 } from "./coding-plans";
 import type { Copy } from "./i18n";
 import { detectHome, detectPlatform, exec, httpGet } from "./exec";
+import { readOpenDesignBalance } from "./opendesign";
 import {
   resolveProvider,
   type BillingKind,
@@ -614,6 +615,38 @@ export class BalanceStore {
       });
     }
 
+    if (route.queryKind === "opendesign-billing") {
+      const result = await readOpenDesignBalance(
+        this.ctx,
+        this.state.home ?? "",
+        hostnameOf(route.gateway),
+      );
+      if (!result.amount) {
+        const error =
+          result.error === "expired" || result.error === "unauthorized"
+            ? this.t.openDesignLoginExpired
+            : result.error === "missing"
+              ? this.t.openDesignLoginMissing
+              : `${this.t.openDesignUsageUnavailable}${result.detail ? `（${result.detail}）` : ""}`;
+        return this.unavailable(
+          this.t.openDesignProviderName,
+          result.endpoint,
+          "api",
+          error,
+        );
+      }
+      return this.snapshotFrom(
+        "opendesign",
+        this.t.openDesignProviderName,
+        "api",
+        result.amount,
+        result.endpoint ?? "",
+        this.t.openDesignEndpointLabel,
+        null,
+        "auto",
+      );
+    }
+
     if (route.queryKind === "claude-oauth-usage") {
       const result = await readClaudeOauthUsage(this.ctx, this.state.home ?? "");
       if (!result.windows) {
@@ -814,6 +847,15 @@ export class BalanceStore {
       checkedAt: Date.now(),
       error,
     };
+  }
+}
+
+/** 取主机名；网关不是合法 URL 时返回空串（由调用方自行给出解析失败提示）。 */
+function hostnameOf(gateway: string): string {
+  try {
+    return new URL(gateway).hostname.toLowerCase();
+  } catch {
+    return "";
   }
 }
 

@@ -21,6 +21,7 @@ describe("settings help content", () => {
     expect(text).toContain("智谱");
     expect(text).toContain("MiniMax");
     expect(text).toContain("Grok");
+    expect(text).toContain("Open Design");
   });
 
   it("parses every section with at least one item", () => {
@@ -51,6 +52,7 @@ describe("settings help content", () => {
       expect(text).not.toContain("~/.grok");
       expect(text).not.toContain("~/.claude");
       expect(text).not.toContain("~/.codex");
+      expect(text).not.toContain("~/.amr");
       expect(text).not.toContain("base_url");
     }
   });
