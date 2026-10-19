@@ -90,6 +90,12 @@ export interface Copy {
   quotaRolling: string;
   quotaWeekly: string;
   quotaMonthly: string;
+  /** 状态栏 chip 用的短窗口名（不带「额度」二字）。 */
+  quotaWeeklyShort: string;
+  quotaMonthlyShort: string;
+  quotaDaysShort: string;
+  quotaHoursShort: string;
+  quotaMinsShort: string;
   quotaDuration: (durationMins: number) => string;
   quotaResetAt: (resetsAtMs: number) => string;
 }
@@ -179,6 +185,11 @@ const ZH: Copy = {
   quotaRolling: "滚动窗口",
   quotaWeekly: "每周额度",
   quotaMonthly: "每月额度",
+  quotaWeeklyShort: "每周",
+  quotaMonthlyShort: "每月",
+  quotaDaysShort: "天",
+  quotaHoursShort: "小时",
+  quotaMinsShort: "分钟",
   quotaDuration: (durationMins) =>
     durationMins % 1440 === 0
       ? `${durationMins / 1440} 天额度`
@@ -274,6 +285,11 @@ const EN: Copy = {
   quotaRolling: "Rolling",
   quotaWeekly: "Weekly",
   quotaMonthly: "Monthly",
+  quotaWeeklyShort: "Weekly",
+  quotaMonthlyShort: "Monthly",
+  quotaDaysShort: "d",
+  quotaHoursShort: "h",
+  quotaMinsShort: "m",
   quotaDuration: (durationMins) =>
     durationMins % 1440 === 0
       ? `${durationMins / 1440}d window`

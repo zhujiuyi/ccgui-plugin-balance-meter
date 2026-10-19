@@ -13,7 +13,12 @@ import type { PluginContext } from "./ccgui-plugin";
 import type { Copy } from "./i18n";
 import { helpDocument } from "./help";
 import type { RouteInfo } from "./routes";
-import { formatAmount, type BalanceStore, type MeterState } from "./state";
+import {
+  formatAmount,
+  type BalanceSnapshot,
+  type BalanceStore,
+  type MeterState,
+} from "./state";
 
 type React = PluginContext["react"];
 
@@ -67,6 +72,42 @@ function timeLabel(ts: number | null | undefined): string {
   }
 }
 
+/** 订阅窗口的短标签（chip / 无上下文处使用）：5 小时 / 1 天 / 每周 / 每月。 */
+function shortWindowLabel(t: Copy, window: NonNullable<BalanceSnapshot["quotaWindows"]>[number]): string {
+  if (window.kind === "weekly") return t.quotaWeeklyShort;
+  if (window.kind === "monthly") return t.quotaMonthlyShort;
+  if (window.kind === "rolling") return t.quotaRolling;
+  const mins = window.durationMins ?? 0;
+  if (mins >= 1440 && mins % 1440 === 0) return `${mins / 1440}${t.quotaDaysShort}`;
+  if (mins >= 60 && mins % 60 === 0) return `${mins / 60}${t.quotaHoursShort}`;
+  return `${mins}${t.quotaMinsShort}`;
+}
+
+/**
+ * 状态栏 chip 文案。订阅场景显示**最短（最容易撞到）的额度窗口**并带上窗口名：
+ * 只显示 98% 会被误读成"整个订阅周期还剩 98%"，而 5 小时窗口才是最先触顶的。
+ */
+/** 窗口从短到长排序：最容易撞到的天花板排最前（5h → 周 → 月）。 */
+const WINDOW_RANK: Record<string, number> = { duration: 0, rolling: 1, weekly: 2, monthly: 3 };
+
+export function chipLabel(
+  snapshot: BalanceSnapshot | null,
+  t: Copy,
+): string {
+  if (!snapshot) return t.chipUnknown;
+  if (snapshot.kind === "unavailable") return t.chipUnavailable;
+  if (snapshot.kind === "subscription" && snapshot.quotaWindows?.length) {
+    const windows = [...snapshot.quotaWindows].sort((a, b) => {
+      const rank = (WINDOW_RANK[a.kind] ?? 9) - (WINDOW_RANK[b.kind] ?? 9);
+      if (rank !== 0) return rank;
+      return (a.durationMins ?? Number.MAX_SAFE_INTEGER) - (b.durationMins ?? Number.MAX_SAFE_INTEGER);
+    });
+    const primary = windows[0];
+    return `${shortWindowLabel(t, primary)} ${Math.round(primary.remaining)}%`;
+  }
+  return formatAmount(snapshot);
+}
+
 function quotaWindows(react: React, t: Copy, snapshot: NonNullable<MeterState["snapshot"]>) {
   const names = {
     rolling: t.quotaRolling,
@@ -102,7 +143,7 @@ function quotaWindows(react: React, t: Copy, snapshot: NonNullable<MeterState["s
 }
 
 /** 概览行：引擎 / 供应商 / 计费方式 / 当前余量 / 最近查询。 */
-function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo | null) {
+export function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo | null) {
   const snapshot = state.snapshot;
   const entries: Array<[string, string | ReturnType<React["createElement"]>]> = [];
   if (route) {
@@ -114,11 +155,15 @@ function summaryRows(react: React, t: Copy, state: MeterState, route: RouteInfo 
   entries.push(
     [t.rowProvider, snapshot?.providerName ?? "—"],
     [t.rowBilling, billingLabel(t, snapshot?.billing ?? "unknown")],
-    [
+  );
+  // 订阅场景的余量由下方各窗口分别给出；再显示一个「当前余量」只会把
+  // 第一个窗口的数字重复一遍，且容易被误读成整个订阅周期的余量。
+  if (snapshot?.kind !== "subscription") {
+    entries.push([
       t.rowAmount,
       snapshot && snapshot.kind !== "unavailable" ? formatAmount(snapshot) : t.unavailable,
-    ],
-  );
+    ]);
+  }
   if (snapshot?.planName) entries.push([t.rowPlan, snapshot.planName]);
   if (snapshot?.quotaWindows?.length) entries.push([t.rowDetails, quotaWindows(react, t, snapshot)]);
   else if (snapshot?.detail) entries.push([t.rowBalanceDetail, snapshot.detail]);
@@ -332,11 +377,7 @@ export function makeChip(ctx: PluginContext, store: BalanceStore, t: Copy) {
     }, [open]);
     const snapshot = state.snapshot;
     const route = state.currentRoute;
-    const text = !snapshot
-      ? t.chipUnknown
-      : snapshot.kind === "unavailable"
-        ? t.chipUnavailable
-        : formatAmount(snapshot);
+    const text = chipLabel(snapshot, t);
     const tooltip =
       snapshot && snapshot.kind !== "unavailable"
         ? `${snapshot.providerName} · ${billingLabel(t, snapshot.billing)} · ${timeLabel(snapshot.checkedAt)}`
