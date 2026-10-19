@@ -194,8 +194,13 @@ pnpm build                           # 产物默认输出到仓库内 dist/，�
 pnpm validate && pnpm validate:dist  # 本地预检，镜像市场 CI 的门槛
 ```
 
-本地调试：CC GUI → 设置 → 插件 → 从本地目录安装 → 选产物目录；改完重新 build 再装一次即可
-（宿主安装的是拷贝快照并立即热加载，无需重启）。
+本地调试：先 `pnpm build`，再 CC GUI → 设置 → 插件 → 从本地目录安装 → 选**产物目录
+`dist/`**（≈ `E:\ccgui-plugin\plugin-balance-meter\dist`）。
+
+> ⚠️ 不要选仓库根目录：宿主要求 `tier: "js"` 插件的 `main.js` 与 `manifest.json`
+> 位于所选目录的同一层；仓库根的 `main.js` 是构建产物且被 `.gitignore` 忽略，
+> 根目录里只有 `dist/main.js`，选根目录会以「tier "js" requires main.js」被拒绝。
+> 改完重新 build 再装一次即可（宿主安装的是拷贝快照并立即热加载，无需重启）。
 
 发版：改 `manifest.json` 的 `version` → `git tag <version> && git push origin <version>`；
 仓库自带的 GitHub Action 会构建并把 `main.js` / `manifest.json` / `checksums.txt` 附到 Release。
