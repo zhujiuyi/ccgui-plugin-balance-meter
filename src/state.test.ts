@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 
 import type { PluginContext } from "./ccgui-plugin";
 import { copy } from "./i18n";
-import { BalanceStore } from "./state";
+import {
+  BalanceStore,
+  primaryWindow,
+  quotaMetric,
+  quotaValue,
+  type BalanceSnapshot,
+} from "./state";
 
 const ROUTE_KEY = "api.deepseek.com/anthropic";
 const CODEX_ROUTE_KEY = "opencode.ai/zen/go/v1";
@@ -660,5 +666,63 @@ describe("BalanceStore inline edit", () => {
 
     store.cancelEndpointEdit();
     expect(store.getSnapshot().edit).toBeNull();
+  }, 30_000);
+});
+
+describe("quota helpers and history samples", () => {
+  function snapshot(kind: BalanceSnapshot["kind"], windows: BalanceSnapshot["quotaWindows"]): BalanceSnapshot {
+    return {
+      kind,
+      providerId: "p",
+      providerName: "P",
+      billing: kind === "subscription" ? "subscription" : "api",
+      currency: kind === "subscription" ? "%" : "USD",
+      amount: kind === "subscription" ? (windows?.[0].remaining ?? null) : 12.5,
+      total: kind === "subscription" ? 100 : null,
+      used: null,
+      planName: null,
+      detail: null,
+      quotaWindows: windows,
+      endpoint: "https://example.test",
+      endpointLabel: "e",
+      checkedAt: 0,
+      error: null,
+    };
+  }
+
+  const WINDOWS = [
+    { kind: "weekly" as const, used: 6, remaining: 94, resetAt: null },
+    { kind: "duration" as const, durationMins: 300, used: 1, remaining: 99, resetAt: null },
+  ];
+
+  it("picks the shortest window as the headline metric", () => {
+    const sub = snapshot("subscription", WINDOWS);
+    expect(primaryWindow(sub)?.durationMins).toBe(300);
+    expect(quotaValue(sub)).toBe(99);
+    expect(quotaMetric(sub)).toBe("duration:300");
+    // 余额渠道没有窗口，指标换成币种 + 金额
+    expect(primaryWindow(snapshot("balance", null))).toBeNull();
+    expect(quotaValue(snapshot("balance", null))).toBe(12.5);
+    expect(quotaMetric(snapshot("balance", null))).toBe("amount:USD");
+    expect(quotaValue({ ...sub, kind: "unavailable" })).toBeNull();
+  });
+
+  it("records a sample after a refresh and keeps only the same metric", async () => {
+    const kv = new Map<string, unknown>();
+    const store = new BalanceStore(makeCtx([], kv), copy("zh-CN"));
+    await store.init();
+    // 查询失败（unavailable）不记样本，避免把 0 画进趋势图
+    expect(store.getSnapshot().history[ROUTE_KEY] ?? []).toHaveLength(0);
+
+    await store.saveEndpointOverride(ROUTE_KEY, CUSTOM_URL);
+    const samples = store.getSnapshot().history[ROUTE_KEY] ?? [];
+    expect(samples.length).toBe(1);
+    expect(samples[0].metric).toBe("amount:");
+    expect(samples[0].value).toBe(12.5);
+
+    // 同一取值且间隔不足 5 分钟：不重复记录
+    await store.saveEndpointOverride(ROUTE_KEY, CUSTOM_URL);
+    expect((store.getSnapshot().history[ROUTE_KEY] ?? []).length).toBe(1);
+    expect(kv.get(`history.${ROUTE_KEY}`)).toHaveLength(1);
   }, 30_000);
 });

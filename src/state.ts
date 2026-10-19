@@ -52,6 +52,15 @@ export interface BalanceSnapshot {
   error: string | null;
 }
 
+/** 一次额度采样：订阅渠道记剩余百分比，余额渠道记金额。 */
+export interface QuotaSample {
+  /** 采样时间（毫秒）。 */
+  t: number;
+  /** 指标签名（窗口类型 + 时长 / 币种），窗口变化后旧样本不参与趋势。 */
+  metric: string;
+  value: number;
+}
+
 export interface MeterState {
   ready: boolean;
   home: string | null;
@@ -66,6 +75,8 @@ export interface MeterState {
   snapshot: BalanceSnapshot | null;
   /** 每条路由各自的最近结果（routeKey → snapshot），设置页列表用。 */
   snapshots: Record<string, BalanceSnapshot>;
+  /** 每条路由最近 24 小时的额度采样（routeKey → samples），面板趋势图用。 */
+  history: Record<string, QuotaSample[]>;
   /** 用户为某条路由手工指定的查询地址（routeKey → 地址模板）。 */
   endpointOverrides: Record<string, string>;
   refreshing: boolean;
@@ -82,6 +93,8 @@ export interface MeterState {
   edit: EndpointEdit | null;
   /** 面板是否展开。同样放 store：抗宿主重挂，避免 hover 时面板自己收起来。 */
   panelOpen: boolean;
+  /** 手动刷新后的冷却截止时间（毫秒）；面板据此显示「冷却 Ns」。 */
+  cooldownUntil: number;
 }
 
 export interface EndpointEdit {
@@ -106,6 +119,11 @@ interface CachedEndpoint {
 /** 全部探测失败后的冷却：自动刷新不再重复打接口，手动刷新可强制重探。 */
 const PROBE_COOLDOWN_MS = 10 * 60 * 1000;
 
+/** 额度趋势：只保留最近 24 小时，同一取值 5 分钟内不重复记录。 */
+const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const HISTORY_MIN_GAP_MS = 5 * 60 * 1000;
+const HISTORY_MAX_SAMPLES = 288;
+
 const CONFIG_KEYS = {
   autoRefresh: "config.autoRefresh",
   minIntervalSec: "config.minIntervalSec",
@@ -125,6 +143,7 @@ const INITIAL: MeterState = {
   engineConfirmed: false,
   snapshot: null,
   snapshots: {},
+  history: {},
   endpointOverrides: {},
   refreshing: false,
   diagnostics: [],
@@ -133,6 +152,7 @@ const INITIAL: MeterState = {
   minIntervalSec: 30,
   edit: null,
   panelOpen: false,
+  cooldownUntil: 0,
 };
 
 export class BalanceStore {
@@ -229,14 +249,17 @@ export class BalanceStore {
       ready: true,
     });
     const cachedSnapshots: Record<string, BalanceSnapshot> = {};
+    const history: Record<string, QuotaSample[]> = {};
     const overrides: Record<string, string> = {};
     for (const route of routes) {
       const cached = await this.ctx.storage.get<BalanceSnapshot>(`snapshot.${route.routeKey}`);
       if (cached) cachedSnapshots[route.routeKey] = cached;
+      const samples = await this.ctx.storage.get<QuotaSample[]>(`history.${route.routeKey}`);
+      if (Array.isArray(samples) && samples.length > 0) history[route.routeKey] = samples;
       const override = await this.ctx.storage.get<string>(`endpointOverride.${route.routeKey}`);
       if (typeof override === "string" && override.trim()) overrides[route.routeKey] = override;
     }
-    this.set({ endpointOverrides: overrides });
+    this.set({ endpointOverrides: overrides, history });
     if (Object.keys(cachedSnapshots).length > 0) {
       this.set({
         snapshots: cachedSnapshots,
@@ -244,6 +267,32 @@ export class BalanceStore {
       });
     }
     await this.refresh("init");
+  }
+
+  /**
+   * 记录一次额度采样（面板趋势图）。订阅渠道记主窗口的剩余百分比，
+   * 余额渠道记金额；失败结果与「无法查询」不记，避免把 0 画进图里。
+   */
+  private async recordSample(routeKey: string, snapshot: BalanceSnapshot): Promise<void> {
+    const metric = quotaMetric(snapshot);
+    const value = quotaValue(snapshot);
+    if (!metric || value === null) return;
+    const now = Date.now();
+    const previous = this.state.history[routeKey] ?? [];
+    // 窗口切换（5 小时重置等）会让数值跳变，旧口径的样本不再可比。
+    const sameMetric = previous.filter((sample) => sample.metric === metric);
+    const last = sameMetric[sameMetric.length - 1];
+    if (last && now - last.t < HISTORY_MIN_GAP_MS && Math.abs(last.value - value) < 0.05) return;
+    const samples = [...sameMetric, { t: now, metric, value }]
+      .filter((sample) => now - sample.t <= HISTORY_WINDOW_MS)
+      .slice(-HISTORY_MAX_SAMPLES);
+    const history = { ...this.state.history, [routeKey]: samples };
+    this.set({ history });
+    try {
+      await this.ctx.storage.set(`history.${routeKey}`, samples);
+    } catch {
+      // 采样只是展示增强，存储失败不影响主流程。
+    }
   }
 
   /**
@@ -266,6 +315,7 @@ export class BalanceStore {
       if (!route) return;
       const snapshot = await this.queryRoute(route, true);
       await this.ctx.storage.set(`snapshot.${routeKey}`, snapshot);
+      await this.recordSample(routeKey, snapshot);
       this.set({
         snapshots: { ...this.state.snapshots, [routeKey]: snapshot },
         snapshot:
@@ -395,6 +445,7 @@ export class BalanceStore {
           const snapshot = await this.queryRoute(target, force);
           snapshots[target.routeKey] = snapshot;
           await this.ctx.storage.set(`snapshot.${target.routeKey}`, snapshot);
+          await this.recordSample(target.routeKey, snapshot);
           if (target.routeKey === this.state.currentRoute?.routeKey) this.set({ snapshot });
         }
         this.set({ snapshots });
@@ -408,7 +459,10 @@ export class BalanceStore {
           ),
         });
       } finally {
-        this.set({ refreshing: false });
+        // 手动刷新后进入冷却，与「最小刷新间隔」一致；自动刷新由节流控制。
+        const cooldownUntil =
+          reason === "manual" ? Date.now() + this.state.minIntervalSec * 1000 : this.state.cooldownUntil;
+        this.set({ refreshing: false, cooldownUntil });
       }
     })();
     this.inFlight = task;
@@ -872,6 +926,36 @@ export class BalanceStore {
       error,
     };
   }
+}
+
+/* ──────────────────── 额度窗口与趋势采样 ──────────────────── */
+
+/** 窗口从短到长排序：最容易撞到的天花板排最前（5h → 周 → 月）。 */
+const WINDOW_RANK: Record<string, number> = { duration: 0, rolling: 1, weekly: 2, monthly: 3 };
+
+/** 主窗口：状态栏与面板大数字都用它（最短窗口）。 */
+export function primaryWindow(snapshot: BalanceSnapshot | null): QuotaWindow | null {
+  if (!snapshot?.quotaWindows?.length) return null;
+  return [...snapshot.quotaWindows].sort((a, b) => {
+    const rank = (WINDOW_RANK[a.kind] ?? 9) - (WINDOW_RANK[b.kind] ?? 9);
+    if (rank !== 0) return rank;
+    return (a.durationMins ?? Number.MAX_SAFE_INTEGER) - (b.durationMins ?? Number.MAX_SAFE_INTEGER);
+  })[0];
+}
+
+/** 趋势指标签名：窗口类型 + 时长；余额渠道用币种。窗口变化后旧样本不可比。 */
+export function quotaMetric(snapshot: BalanceSnapshot | null): string | null {
+  if (!snapshot || snapshot.kind === "unavailable") return null;
+  const primary = primaryWindow(snapshot);
+  if (primary) return `${primary.kind}:${primary.durationMins ?? ""}`;
+  return `amount:${snapshot.currency ?? ""}`;
+}
+
+/** 趋势采样值：订阅取主窗口剩余百分比，余额取金额。 */
+export function quotaValue(snapshot: BalanceSnapshot | null): number | null {
+  if (!snapshot || snapshot.kind === "unavailable") return null;
+  const primary = primaryWindow(snapshot);
+  return primary ? primary.remaining : snapshot.amount;
 }
 
 /** 取主机名；网关不是合法 URL 时返回空串（由调用方自行给出解析失败提示）。 */

@@ -5,7 +5,30 @@ export interface Copy {
   chipUnknown: string;
   /** 状态栏用的短标签（无法查询时）；完整句见 unavailable。 */
   chipUnavailable: string;
+  /** 状态栏「剩」/「left」：`5小时 · 剩 93%`。 */
+  chipRemaining: string;
   panelTitle: string;
+  panelCode: string;
+  /** 大数字上方的说明（订阅窗口名 + 剩余）。 */
+  heroKicker: (windowLabel: string) => string;
+  heroBalanceKicker: string;
+  resetLabel: string;
+  sectionQuota: string;
+  sectionQuotaCode: (count: number) => string;
+  windowIndex: (index: number) => string;
+  trendTitlePlan: (windowLabel: string) => string;
+  trendTitleBalance: string;
+  trendWindowCode: string;
+  trendEmpty: string;
+  trendNow: string;
+  readAuto: string;
+  readJustNow: string;
+  readMinutesAgo: (minutes: number) => string;
+  footMinInterval: string;
+  coolReady: string;
+  settingsCooling: string;
+  closePanelLabel: string;
+  keyHint: string;
   rowProvider: string;
   rowBilling: string;
   rowAmount: string;
@@ -104,15 +127,36 @@ const ZH: Copy = {
   chipAria: "点击查看当前路由的余额与余量",
   chipUnknown: "—",
   chipUnavailable: "无法查询",
+  chipRemaining: "剩",
   panelTitle: "余额与余量",
+  panelCode: "BALANCE · QUOTA",
+  heroKicker: (windowLabel) => `${windowLabel}剩余`,
+  heroBalanceKicker: "账户余额",
+  resetLabel: "重置",
+  sectionQuota: "额度窗口",
+  sectionQuotaCode: (count) => `QUOTA / ${String(count).padStart(2, "0")}`,
+  windowIndex: (index) => `WINDOW ${String(index + 1).padStart(2, "0")}`,
+  trendTitlePlan: (windowLabel) => `${windowLabel}额度趋势`,
+  trendTitleBalance: "余额趋势",
+  trendWindowCode: "24H · 本机记录",
+  trendEmpty: "再查询几次后显示最近 24 小时趋势",
+  trendNow: "现在",
+  readAuto: "AUTO",
+  readJustNow: "刚刚",
+  readMinutesAgo: (minutes) => `${minutes} 分钟前`,
+  footMinInterval: "最小刷新间隔",
+  coolReady: "可刷新",
+  settingsCooling: "冷却",
+  closePanelLabel: "关闭面板",
+  keyHint: "ESC",
   rowProvider: "供应商",
   rowBilling: "计费方式",
   rowAmount: "当前余量",
   rowPlan: "订阅计划",
   rowDetails: "额度窗口",
   rowBalanceDetail: "余额构成",
-  rowEndpoint: "查询地址",
-  rowCheckedAt: "最近查询",
+  rowEndpoint: "接口地址",
+  rowCheckedAt: "读取于",
   refresh: "立即刷新",
   refreshing: "刷新中…",
   close: "关闭",
@@ -204,7 +248,28 @@ const EN: Copy = {
   chipAria: "Click to inspect the balance / quota of the active route",
   chipUnknown: "—",
   chipUnavailable: "n/a",
+  chipRemaining: "left",
   panelTitle: "Balance & quota",
+  panelCode: "BALANCE · QUOTA",
+  heroKicker: (windowLabel) => `${windowLabel} left`,
+  heroBalanceKicker: "Account balance",
+  resetLabel: "Resets",
+  sectionQuota: "Quota windows",
+  sectionQuotaCode: (count) => `QUOTA / ${String(count).padStart(2, "0")}`,
+  windowIndex: (index) => `WINDOW ${String(index + 1).padStart(2, "0")}`,
+  trendTitlePlan: (windowLabel) => `${windowLabel} usage trend`,
+  trendTitleBalance: "Balance trend",
+  trendWindowCode: "24H · local history",
+  trendEmpty: "Query a few more times to see the last 24 hours",
+  trendNow: "now",
+  readAuto: "AUTO",
+  readJustNow: "just now",
+  readMinutesAgo: (minutes) => `${minutes} min ago`,
+  footMinInterval: "Min refresh interval",
+  coolReady: "ready",
+  settingsCooling: "cooling",
+  closePanelLabel: "Close panel",
+  keyHint: "ESC",
   rowProvider: "Provider",
   rowBilling: "Billing",
   rowAmount: "Remaining",
@@ -212,7 +277,7 @@ const EN: Copy = {
   rowDetails: "Quota windows",
   rowBalanceDetail: "Balance detail",
   rowEndpoint: "Endpoint",
-  rowCheckedAt: "Checked",
+  rowCheckedAt: "Read at",
   refresh: "Refresh now",
   refreshing: "Refreshing…",
   close: "Close",

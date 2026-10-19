@@ -1,5 +1,5 @@
-/* 余额与余量：状态栏 chip + 液态玻璃面板 + 设置页 section。
- * 颜色尽量引用宿主语义 token（--color-*），深色用 `.dark` 祖先选择器覆盖；
+/* 余额与余量：状态栏胶囊 + 悬浮遥测面板 + 设置页 section。
+ * 面板使用自带的浅色/深色配色（不依赖宿主 Tailwind 层），
  * 毛玻璃用 backdrop-filter（WebView2 支持），并给不支持的场景留不透明兜底。 */
 
 .balance-meter-wrap {
@@ -8,73 +8,293 @@
   align-items: center;
 }
 
-/* ── 状态栏 chip ─────────────────────────────────────────────── */
-.balance-meter-chip {
+/* ── 状态栏触发按钮 ───────────────────────────────────────────── */
+.balance-meter-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--color-separator-border, rgba(127, 127, 127, 0.24));
   background: transparent;
-  color: inherit;
+  color: var(--color-text-secondary, #3f3f46);
   font: inherit;
-  font-size: 12px;
-  line-height: 16px;
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 0.9, 0.24, 1),
+    border-color 0.22s,
+    color 0.22s,
+    background 0.22s,
+    box-shadow 0.22s;
 }
 
-.balance-meter-chip:hover,
-.balance-meter-chip.is-open {
-  background: var(--color-background-tertiary-hover, rgba(127, 127, 127, 0.16));
-  border-color: var(--color-separator-border, rgba(127, 127, 127, 0.25));
+.balance-meter-trigger:hover,
+.balance-meter-trigger.is-open {
+  transform: translateY(-1px);
+  border-color: rgba(7, 122, 99, 0.46);
+  color: var(--color-text-primary, #10201b);
+  background: rgba(11, 138, 112, 0.08);
+  box-shadow: 0 0 0 3px rgba(11, 138, 112, 0.06);
 }
 
-.balance-meter-chip svg {
+.balance-meter-trigger:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.balance-meter-trigger-dot {
+  position: relative;
+  width: 5px;
+  height: 5px;
   flex: none;
-  opacity: 0.85;
+  border-radius: 50%;
+  background: #0b8a70;
+  box-shadow: 0 0 9px rgba(11, 138, 112, 0.7);
 }
 
-/* ── 浮动面板（液态玻璃） ─────────────────────────────────────── */
+.balance-meter-trigger-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid rgba(11, 138, 112, 0.55);
+  animation: balance-meter-pulse 2.6s cubic-bezier(0.22, 0.9, 0.24, 1) infinite;
+}
+
+.balance-meter-trigger-text b {
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #077a63;
+}
+
+.dark .balance-meter-trigger-text b {
+  color: #4ff0c8;
+}
+
+.dark .balance-meter-trigger {
+  color: var(--color-text-secondary, #b7c9c2);
+}
+
+.dark .balance-meter-trigger:hover,
+.dark .balance-meter-trigger.is-open {
+  color: #e9f5f0;
+  border-color: rgba(79, 240, 200, 0.46);
+  background: rgba(79, 240, 200, 0.09);
+}
+
+.balance-meter-trigger.is-syncing .balance-meter-trigger-dot {
+  animation: balance-meter-blink 0.4s steps(2, end) 3;
+}
+
+.balance-meter-trigger svg {
+  flex: none;
+  color: var(--color-text-tertiary, #71717a);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.balance-meter-trigger.is-open svg {
+  transform: rotate(180deg);
+}
+
+/* ── 浮动面板 ─────────────────────────────────────────────────── */
 .balance-meter-panel {
+  --bm-ink: #10201b;
+  --bm-ink-2: #3a5048;
+  --bm-muted: #5b706a;
+  --bm-line: rgba(12, 72, 58, 0.16);
+  --bm-line-soft: rgba(16, 54, 45, 0.085);
+  --bm-mint: #077a63;
+  --bm-lime: #5f8a00;
+  --bm-amber: #8f5300;
+  --bm-track: rgba(16, 60, 50, 0.09);
+  --bm-seg-gap: rgba(248, 251, 249, 1);
+  --bm-hero: #0c1a16;
+  --bm-panel-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.97), rgba(241, 247, 244, 0.965));
+  --bm-panel-border: rgba(255, 255, 255, 0.7);
+  --bm-panel-shadow:
+    0 44px 96px -34px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(10, 50, 40, 0.07),
+    0 1px 0 rgba(255, 255, 255, 0.92) inset;
+  --bm-ghost-bg: rgba(255, 255, 255, 0.42);
+  --bm-ghost-hover: rgba(255, 255, 255, 0.72);
+
   position: absolute;
   bottom: calc(100% + 10px);
   left: 0;
-  width: 340px;
-  padding: 16px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  max-height: min(820px, calc(100vh - 110px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 15px 18px 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  box-shadow:
-    0 18px 50px rgba(15, 23, 42, 0.22),
-    0 2px 8px rgba(15, 23, 42, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  color: var(--color-text-secondary, #3f3f46);
+  border: 1px solid var(--bm-panel-border);
+  background: var(--bm-panel-bg);
+  color: var(--bm-ink-2);
   font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
   z-index: 60;
-  animation: balance-meter-pop 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(11, 138, 112, 0.26) transparent;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: var(--bm-panel-shadow);
+  transform-origin: 0% 100%;
+  animation: balance-meter-panel-in 0.34s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark .balance-meter-panel {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(24, 24, 27, 0.72);
-  box-shadow:
-    0 20px 56px rgba(0, 0, 0, 0.6),
-    0 2px 10px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  color: var(--color-text-secondary, #d4d4d8);
+  --bm-ink: #e9f5f0;
+  --bm-ink-2: #b7c9c2;
+  --bm-muted: #80958e;
+  --bm-line: rgba(151, 255, 224, 0.14);
+  --bm-line-soft: rgba(255, 255, 255, 0.06);
+  --bm-mint: #4ff0c8;
+  --bm-lime: #c9ff5a;
+  --bm-amber: #ffc266;
+  --bm-track: rgba(255, 255, 255, 0.08);
+  --bm-seg-gap: rgba(13, 18, 19, 1);
+  --bm-hero: #f2fbf7;
+  --bm-panel-bg: linear-gradient(165deg, rgba(20, 28, 27, 0.97), rgba(13, 18, 19, 0.965));
+  --bm-panel-border: rgba(255, 255, 255, 0.12);
+  --bm-panel-shadow:
+    0 40px 88px -28px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  --bm-ghost-bg: rgba(255, 255, 255, 0.06);
+  --bm-ghost-hover: rgba(255, 255, 255, 0.12);
 }
 
-@keyframes balance-meter-pop {
+.balance-meter-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.balance-meter-panel::-webkit-scrollbar-thumb {
+  background: rgba(11, 138, 112, 0.24);
+  border-radius: 3px;
+}
+
+.balance-meter-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes balance-meter-panel-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.975);
+    transform: translateY(10px) scale(0.97);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* 装饰：顶部流光、四角定位线、刷新扫描 */
+.balance-meter-sheen {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0 28%, rgba(11, 160, 128, 0.7) 50%, transparent 72% 100%);
+  background-size: 220% 100%;
+  animation: balance-meter-sheen 7s linear infinite;
+}
+
+.balance-meter-corner {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border: 0 solid rgba(11, 138, 112, 0.32);
+  pointer-events: none;
+}
+
+.balance-meter-corner.c-tl {
+  top: 8px;
+  left: 8px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+  border-top-left-radius: 4px;
+}
+
+.balance-meter-corner.c-tr {
+  top: 8px;
+  right: 8px;
+  border-top-width: 1px;
+  border-right-width: 1px;
+  border-top-right-radius: 4px;
+}
+
+.balance-meter-corner.c-bl {
+  bottom: 8px;
+  left: 8px;
+  border-bottom-width: 1px;
+  border-left-width: 1px;
+  border-bottom-left-radius: 4px;
+}
+
+.balance-meter-corner.c-br {
+  bottom: 8px;
+  right: 8px;
+  border-bottom-width: 1px;
+  border-right-width: 1px;
+  border-bottom-right-radius: 4px;
+}
+
+.balance-meter-scan {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.balance-meter-scan::before {
+  content: "";
+  position: absolute;
+  left: -25%;
+  right: -25%;
+  top: -170px;
+  height: 170px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(11, 160, 128, 0.08) 45%,
+    rgba(11, 160, 128, 0.26) 70%,
+    rgba(95, 138, 0, 0.12) 82%,
+    transparent
+  );
+  opacity: 0;
+}
+
+.balance-meter-panel.is-scanning .balance-meter-scan::before {
+  animation: balance-meter-scan 1.1s cubic-bezier(0.22, 0.9, 0.24, 1) forwards;
+}
+
+/* 面板内容的分段入场 */
+.balance-meter-stagger {
+  position: relative;
+  z-index: 2;
+  animation: balance-meter-stagger-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
+@keyframes balance-meter-stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -82,57 +302,762 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .balance-meter-panel {
-    animation: none;
-  }
+/* ── 面板头部 ─────────────────────────────────────────────────── */
+.balance-meter-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--bm-line-soft);
 }
 
+.balance-meter-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--bm-ink-2);
+  white-space: nowrap;
+}
+
+.balance-meter-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bm-mint);
+  box-shadow: 0 0 8px rgba(7, 122, 99, 0.42);
+  animation: balance-meter-breathe 3.4s ease-in-out infinite;
+}
+
+.balance-meter-head-code {
+  margin-left: 2px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8.5px;
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  color: var(--bm-muted);
+  white-space: nowrap;
+}
+
+.balance-meter-close-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bm-muted);
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.balance-meter-close-btn:hover {
+  color: var(--bm-ink);
+  background: rgba(10, 60, 50, 0.06);
+  border-color: var(--bm-line-soft);
+  transform: rotate(90deg);
+}
+
+.dark .balance-meter-close-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── 大数字区 ─────────────────────────────────────────────────── */
+.balance-meter-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0 9px;
+}
+
+.balance-meter-hero-copy {
+  min-width: 0;
+}
+
+.balance-meter-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bm-muted);
+}
+
+.balance-meter-kicker::before {
+  content: "";
+  width: 12px;
+  height: 1px;
+  background: var(--bm-mint);
+  opacity: 0.6;
+}
+
+.balance-meter-hero-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: 5px;
+  font-family: var(--font-display, "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif);
+  font-size: 54px;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--bm-hero);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.dark .balance-meter-hero-value {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.balance-meter-pct {
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--bm-mint);
+  text-shadow: none;
+}
+
+.balance-meter-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--bm-muted);
+  white-space: nowrap;
+}
+
+.balance-meter-mono {
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--bm-ink-2);
+}
+
+.balance-meter-mini-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bm-mint);
+  box-shadow: 0 0 7px rgba(11, 138, 112, 0.55);
+  animation: balance-meter-breathe 3.2s ease-in-out infinite;
+}
+
+.balance-meter-wallet-badge {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--bm-line);
+  background: radial-gradient(circle, rgba(11, 138, 112, 0.12), transparent 70%);
+  color: var(--bm-mint);
+}
+
+/* 仪表盘 */
+.balance-meter-gauge {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex: none;
+}
+
+.balance-meter-gauge-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.balance-meter-gauge-track {
+  fill: none;
+  stroke: var(--bm-track);
+  stroke-width: 5;
+}
+
+.balance-meter-gauge-arc {
+  fill: none;
+  stroke: url(#balanceMeterArc);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 2px 5px rgba(11, 138, 112, 0.22));
+}
+
+.balance-meter-gauge-ticks line {
+  stroke: var(--bm-track);
+  stroke-width: 1;
+  transition: stroke 0.45s ease, opacity 0.45s ease;
+}
+
+.balance-meter-gauge-ticks line.on {
+  stroke: var(--bm-mint);
+  opacity: 0.72;
+}
+
+.balance-meter-gauge-core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--bm-ink);
+}
+
+.balance-meter-gauge-unit {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--bm-muted);
+}
+
+.balance-meter-gauge-orbit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: balance-meter-spin 16s linear infinite;
+}
+
+.balance-meter-gauge-orbit::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--bm-lime);
+  box-shadow: 0 0 8px rgba(95, 138, 0, 0.55);
+}
+
+/* ── 小节标题 ─────────────────────────────────────────────────── */
+.balance-meter-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 1px 0 4px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bm-muted);
+}
+
+.balance-meter-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--bm-line-soft), transparent);
+}
+
+.balance-meter-label-code {
+  color: var(--bm-muted);
+  opacity: 0.72;
+}
+
+/* ── 额度窗口行 ───────────────────────────────────────────────── */
+.balance-meter-quota {
+  margin: 0 -10px;
+  padding: 7px 10px 8px;
+  border-radius: 10px;
+  transition: background 0.25s, transform 0.25s;
+}
+
+.balance-meter-quota:hover {
+  background: rgba(10, 60, 50, 0.045);
+  transform: translateX(2px);
+}
+
+.dark .balance-meter-quota:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.balance-meter-q-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.balance-meter-q-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  color: var(--bm-ink);
+}
+
+.balance-meter-q-code {
+  margin-left: 5px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  color: var(--bm-muted);
+  opacity: 0.8;
+}
+
+.balance-meter-q-val {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--bm-mint);
+}
+
+.balance-meter-q-val b {
+  font-weight: 600;
+}
+
+/* 分段进度条：右端标记 + 竖切缝隙 */
+.balance-meter-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--bm-track);
+  overflow: hidden;
+}
+
+.balance-meter-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 8px,
+    var(--bm-seg-gap) 8px 10px
+  );
+  opacity: 0.9;
+}
+
+.balance-meter-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(11, 138, 112, 0.32) 0%, var(--bm-mint) 55%, var(--bm-lime) 100%);
+  box-shadow: 0 0 14px rgba(11, 138, 112, 0.24);
+  transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.balance-meter-bar-fill::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 34%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: translateX(-160%) skewX(-18deg);
+  animation: balance-meter-shimmer 3.6s ease-in-out infinite;
+}
+
+.balance-meter-bar-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 0;
+  width: 2px;
+  z-index: 4;
+  border-radius: 1px;
+  background: var(--bm-lime);
+  box-shadow: 0 0 8px rgba(95, 138, 0, 0.6);
+  transition: left 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.balance-meter-q-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--bm-muted);
+}
+
+.balance-meter-q-window {
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  opacity: 0.65;
+}
+
+/* ── 趋势 ─────────────────────────────────────────────────────── */
+.balance-meter-trend {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bm-line-soft);
+}
+
+.balance-meter-trend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.balance-meter-trend-title {
+  font-size: 12.5px;
+  color: var(--bm-ink);
+  letter-spacing: 0.01em;
+}
+
+.balance-meter-trend-code {
+  margin-left: 6px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--bm-muted);
+  opacity: 0.75;
+}
+
+.balance-meter-trend-delta {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 9.5px;
+  color: var(--bm-muted);
+  white-space: nowrap;
+}
+
+.balance-meter-trend-delta b {
+  font-weight: 600;
+  color: var(--bm-amber);
+}
+
+.balance-meter-trend-svg {
+  display: block;
+  width: 100%;
+  height: 56px;
+  overflow: visible;
+}
+
+.balance-meter-trend-grid line {
+  stroke: var(--bm-line-soft);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.balance-meter-trend-line {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 3px rgba(11, 138, 112, 0.16));
+}
+
+.balance-meter-trend-dot {
+  fill: #fff;
+  stroke: var(--bm-mint);
+  stroke-width: 2;
+}
+
+.dark .balance-meter-trend-dot {
+  fill: #10201b;
+}
+
+.balance-meter-trend-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--bm-muted);
+  opacity: 0.75;
+}
+
+.balance-meter-trend-empty {
+  margin: 4px 0 2px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--bm-muted);
+}
+
+/* ── meta 行 ──────────────────────────────────────────────────── */
+.balance-meter-meta {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--bm-line-soft);
+}
+
+.balance-meter-meta-row {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--bm-line-soft);
+}
+
+.balance-meter-meta-row:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.balance-meter-meta-label {
+  padding-top: 2px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--bm-muted);
+  white-space: nowrap;
+}
+
+.balance-meter-meta-value {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--bm-ink-2);
+}
+
+.balance-meter-reading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.balance-meter-read-code {
+  margin-left: 4px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: var(--bm-muted);
+  opacity: 0.7;
+}
+
+/* 查询地址在 meta 行里占两列 */
+.balance-meter-meta .balance-meter-endpoint {
+  grid-template-columns: 1fr;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bm-line-soft);
+}
+
+.balance-meter-meta .balance-meter-endpoint-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.balance-meter-meta .balance-meter-endpoint-label {
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--bm-muted);
+}
+
+.balance-meter-meta .balance-meter-endpoint-value {
+  display: block;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  border: 1px solid var(--bm-line-soft);
+  border-radius: 8px;
+  background: rgba(10, 60, 50, 0.035);
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 10.5px;
+  line-height: 1.6;
+  letter-spacing: -0.005em;
+  color: var(--bm-ink-2);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: normal;
+}
+
+.dark .balance-meter-meta .balance-meter-endpoint-value {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ── 面板页脚 ─────────────────────────────────────────────────── */
+.balance-meter-panel-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bm-line-soft);
+}
+
+.balance-meter-foot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 9px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--bm-muted);
+  white-space: nowrap;
+}
+
+.balance-meter-cool-state {
+  color: var(--bm-mint);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.balance-meter-cool-state.is-cooling {
+  color: var(--bm-amber);
+}
+
+.balance-meter-foot-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.balance-meter-foot-actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.balance-meter-refresh {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #123f35;
+  background: linear-gradient(180deg, #14453a, #0b2b24);
+  color: #eafff8;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 18px -12px rgba(8, 45, 36, 0.7);
+  transition: transform 0.2s cubic-bezier(0.22, 0.9, 0.24, 1), border-color 0.2s, box-shadow 0.2s,
+    color 0.2s, background 0.2s;
+}
+
+.balance-meter-refresh:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #1c6a57;
+  box-shadow: 0 12px 26px -12px rgba(8, 45, 36, 0.55);
+}
+
+.balance-meter-refresh:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+.balance-meter-refresh:disabled {
+  cursor: not-allowed;
+  color: #7e928b;
+  background: rgba(16, 60, 50, 0.05);
+  border-color: rgba(16, 60, 50, 0.12);
+  box-shadow: none;
+}
+
+.dark .balance-meter-refresh:disabled {
+  color: #80958e;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.balance-meter-refresh-ico {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.balance-meter-refresh.is-spinning .balance-meter-refresh-ico svg {
+  animation: balance-meter-spin 0.85s linear infinite;
+}
+
+.balance-meter-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--bm-line);
+  border-radius: 9px;
+  background: var(--bm-ghost-bg);
+  color: var(--bm-ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.balance-meter-panel-close:hover {
+  background: var(--bm-ghost-hover);
+  color: var(--bm-ink);
+  border-color: rgba(11, 138, 112, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 8px 18px -14px rgba(8, 45, 36, 0.5);
+}
+
+.balance-meter-panel-close:active {
+  transform: scale(0.99);
+}
+
+.balance-meter-panel-close svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.balance-meter-key-hint {
+  margin-left: 3px;
+  padding: 1px 4px;
+  border: 1px solid var(--bm-line-soft);
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--bm-muted);
+  opacity: 0.7;
+}
+
+/* ── 通用文字 / 图例 ─────────────────────────────────────────── */
 .balance-meter-panel-title {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--color-text-primary, #111);
-}
-
-/* 面板头部：标题 + 右上角关闭按钮。 */
-.balance-meter-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.balance-meter-close-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: rgba(127, 127, 127, 0.1);
-  color: var(--color-text-tertiary, #71717a);
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
-}
-
-.balance-meter-close-btn:hover {
-  border-color: var(--color-separator-border, rgba(127, 127, 127, 0.3));
-  background: var(--color-background-tertiary-hover, rgba(127, 127, 127, 0.2));
-  color: var(--color-text-primary, #18181b);
-}
-
-.dark .balance-meter-close-btn {
-  color: var(--color-text-tertiary, #a1a1aa);
-}
-
-.dark .balance-meter-close-btn:hover {
-  color: var(--color-text-primary, #f4f4f5);
 }
 
 .dark .balance-meter-panel-title {
@@ -146,12 +1071,19 @@
   opacity: 0.7;
 }
 
-/* 设置页里的标题不在 panel-head 里，自己带下间距。 */
 .balance-meter-settings .balance-meter-panel-title {
   margin-bottom: 12px;
 }
 
-/* ── 概览行 ──────────────────────────────────────────────────── */
+.balance-meter-note {
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--bm-muted, var(--color-text-tertiary, inherit));
+}
+
+/* ── 概览行（设置页） ─────────────────────────────────────────── */
 .balance-meter-dl {
   display: grid;
   gap: 9px;
@@ -181,11 +1113,13 @@
   color: var(--color-text-primary, #18181b);
 }
 
+.dark .balance-meter-row dd {
+  color: var(--color-text-primary, #f4f4f5);
+}
+
 .balance-meter-row.is-details {
   align-items: start;
-  /* 额度窗口是多行块：标签单独一行、窗口占满面板整宽。原先挤在 68px 标签列
-     右侧的窄列里，宽度恰好卡在临界点——字体度量稍宽（不同机器/不同语言）就会
-     把重置时间挤到下一行，与相邻窗口形成"错行"。 */
+  /* 额度窗口是多行块：标签单独一行、窗口占满整宽，避免窄面板错行。 */
   grid-template-columns: 1fr;
   gap: 6px;
 }
@@ -203,8 +1137,6 @@
 }
 
 .balance-meter-quota-window {
-  /* 两列：值 + 重置时间。用 grid 固定列（而不是 flex-wrap），空间不足时只会
-     让"值"内部换行，重置时间永远不会被整体挤到下一行、脱离自己的窗口。 */
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
@@ -213,22 +1145,14 @@
   text-align: right;
 }
 
-/* 值允许内部换行（极窄时的兜底），重置时间永不拆行 */
 .balance-meter-quota-value {
-  white-space: normal;
   min-width: 0;
+  white-space: normal;
 }
 
 .balance-meter-quota-reset {
   white-space: nowrap;
-}
-
-.balance-meter-quota-reset {
   color: var(--color-text-secondary, #52525b);
-}
-
-.dark .balance-meter-row dd {
-  color: var(--color-text-primary, #f4f4f5);
 }
 
 /* ── 查询地址区块 ─────────────────────────────────────────────── */
@@ -380,10 +1304,10 @@
   gap: 4px;
   height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--color-separator-border, rgba(127, 127, 127, 0.35));
+  border: 1px solid var(--bm-line, var(--color-separator-border, rgba(127, 127, 127, 0.35)));
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--color-text-secondary, #3f3f46);
+  background: var(--bm-ghost-bg, rgba(255, 255, 255, 0.5));
+  color: var(--bm-ink-2, var(--color-text-secondary, #3f3f46));
   font: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -392,7 +1316,7 @@
 }
 
 .balance-meter-ghost-btn:hover:not(:disabled) {
-  color: var(--color-text-primary, #18181b);
+  color: var(--bm-ink, var(--color-text-primary, #18181b));
   background: rgba(127, 127, 127, 0.16);
 }
 
@@ -402,8 +1326,8 @@
 }
 
 .dark .balance-meter-ghost-btn {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-text-secondary, #d4d4d8);
+  background: var(--bm-ghost-bg, rgba(255, 255, 255, 0.06));
+  color: var(--bm-ink-2, var(--color-text-secondary, #d4d4d8));
 }
 
 .balance-meter-endpoint-head .balance-meter-ghost-btn {
@@ -424,13 +1348,13 @@
 }
 
 .balance-meter-intro,
-.balance-meter-note {
+.balance-meter-settings .balance-meter-note {
   margin: 0;
   color: var(--color-text-tertiary, inherit);
   line-height: 1.55;
 }
 
-.balance-meter-note {
+.balance-meter-settings .balance-meter-note {
   padding-left: 14px;
 }
 
@@ -501,4 +1425,115 @@
 
 .balance-meter-help-list li {
   list-style: disc;
+}
+
+/* ── 动画 ─────────────────────────────────────────────────────── */
+@keyframes balance-meter-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes balance-meter-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes balance-meter-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes balance-meter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes balance-meter-shimmer {
+  0% {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  55%,
+  100% {
+    transform: translateX(360%) skewX(-18deg);
+  }
+}
+
+@keyframes balance-meter-sheen {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes balance-meter-scan {
+  0% {
+    top: -170px;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% + 40px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .balance-meter-panel {
+    width: min(400px, calc(100vw - 24px));
+  }
+
+  .balance-meter-hero-value {
+    font-size: 48px;
+  }
+
+  .balance-meter-gauge {
+    width: 88px;
+    height: 88px;
+  }
+
+  .balance-meter-meta-row {
+    grid-template-columns: 68px 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .balance-meter-panel,
+  .balance-meter-stagger {
+    animation: none;
+  }
+
+  .balance-meter-trigger-dot::after,
+  .balance-meter-status-dot,
+  .balance-meter-mini-dot,
+  .balance-meter-gauge-orbit,
+  .balance-meter-sheen,
+  .balance-meter-bar-fill::after {
+    animation: none;
+  }
+
+  .balance-meter-gauge-arc,
+  .balance-meter-bar-fill,
+  .balance-meter-bar-marker {
+    transition: none;
+  }
 }
