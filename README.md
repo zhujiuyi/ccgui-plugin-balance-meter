@@ -82,7 +82,7 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 | LongCat | api.longcat.chat | API | ❌ 无公开接口 |
 | OpenCode Go | opencode.ai/zen/go | 订阅 | ✅ `GET /zen/go/v1/usage`（滚动/周/月窗口；API key 或 OpenCode CLI 登录） |
 | OpenCode Zen（按量） | opencode.ai/zen | API | ❌ 官方无公开余额接口（仅网页控制台） |
-| Open Design（AMR / Vela） | amr-link.open-design.ai · *.powerformer.net | API | ✅ `GET /api/v1/billing/summary`（读客户端登录的 controlKey；网关用的 `sk-amr-` runtime key 查不了账单） |
+| Open Design（AMR / Vela） | amr-link.open-design.ai · *.powerformer.net | 订阅 / API | ✅ 有订阅：`GET /api/v1/workspaces/{id}/billing/funding-check` 的 `codingPlan.windows`（5 小时 / 每周）；无订阅：`GET /api/v1/billing/summary` 的账户余额。均读客户端登录的 controlKey（网关用的 `sk-amr-` runtime key 查不了账单） |
 | Anthropic 官方 | api.anthropic.com | API | ❌ 无公开接口 |
 | OpenAI 订阅 | chatgpt.com | 订阅 | ✅ Codex App Server `account/rateLimits/read` |
 | Claude 订阅 | api.anthropic.com（OAuth 登录） | 订阅 | ⚠️ 内部接口 `GET /api/oauth/usage`（实验性，未真机验证） |
@@ -155,11 +155,14 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 
 ### 0.3.0
 
-- **新增 Open Design（AMR / Vela）渠道余额**：按当前路由识别 `amr-link.open-design.ai`
-  及 feature/test 网关，读取本机 Open Design 客户端登录的 controlKey 查询账户余额，
-  显示订阅额度 + 充值额度的可用总额与会员等级。
-  渠道配置里的 `sk-amr-` runtime key 只能用于网关推理（账单接口返回 401），插件不会拿它去查余额。
-  未安装/未登录客户端、登录过期时分别给出明确提示，不代刷新凭证。
+- **新增 Open Design（AMR / Vela）渠道**：按当前路由识别 `amr-link.open-design.ai`
+  及 feature/test 网关，读取本机 Open Design 客户端登录的 controlKey 查询额度。
+  - **有订阅时默认显示订阅额度**：5 小时与每周两个窗口（已用百分比 + 重置时间），
+    与其它套餐渠道的展示口径一致。
+  - **没有订阅时才显示账户余额**：订阅额度 + 充值额度的可用总额。
+  - 渠道配置里的 `sk-amr-` runtime key 只能用于网关推理（账单接口返回 401），
+    插件不会拿它去查余额。
+  - 未安装/未登录客户端、登录过期时分别给出明确提示，不代刷新凭证。
 
 ### 0.2.2
 

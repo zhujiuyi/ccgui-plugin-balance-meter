@@ -83,6 +83,7 @@ export interface Copy {
   /** Open Design（AMR / Vela）账户余额 */
   openDesignProviderName: string;
   openDesignEndpointLabel: string;
+  openDesignPlanEndpointLabel: string;
   openDesignUsageUnavailable: string;
   openDesignLoginExpired: string;
   openDesignLoginMissing: string;
@@ -171,6 +172,7 @@ const ZH: Copy = {
   grokLoginMissing: "未找到 Grok 登录凭证（请先运行 grok login）",
   openDesignProviderName: "Open Design",
   openDesignEndpointLabel: "Open Design 账单接口 /api/v1/billing/summary",
+  openDesignPlanEndpointLabel: "Open Design 订阅额度接口 /billing/funding-check",
   openDesignUsageUnavailable: "无法读取 Open Design 账户余额",
   openDesignLoginExpired: "Open Design 登录已过期，请在 Open Design 客户端重新登录",
   openDesignLoginMissing: "未找到 Open Design 登录信息（请先安装并登录 Open Design 客户端）",
@@ -265,6 +267,7 @@ const EN: Copy = {
   grokLoginMissing: "No Grok credentials found (run grok login first)",
   openDesignProviderName: "Open Design",
   openDesignEndpointLabel: "Open Design billing /api/v1/billing/summary",
+  openDesignPlanEndpointLabel: "Open Design plan quota /billing/funding-check",
   openDesignUsageUnavailable: "Could not read the Open Design account balance",
   openDesignLoginExpired: "Open Design login expired — sign in again in the Open Design app",
   openDesignLoginMissing: "No Open Design login found (install and sign in to the Open Design app first)",

@@ -353,35 +353,104 @@ describe("BalanceStore coding-plan routes", () => {
     expect(snapshot?.error).toBeNull();
   }, 30_000);
 
-  it("shows the Open Design account balance from the client's control-key config", async () => {
+  const AMR_CONFIG = JSON.stringify({
+    profiles: {
+      prod: {
+        controlKey: "ctl-prod",
+        runtimeKey: "sk-amr-runtime",
+        apiUrl: "https://amr-api.open-design.ai",
+      },
+    },
+  });
+  const OPEN_DESIGN_ROUTE = {
+    claude: {
+      current: "opendesign",
+      providers: {
+        opendesign: {
+          name: "OpenDesign",
+          baseUrl: "https://amr-link.open-design.ai",
+          apiKey: "sk-amr-runtime",
+        },
+      },
+    },
+  };
+
+  it("shows the subscription quota windows when the account has one", async () => {
     const store = new BalanceStore(
       quotaCtx(
-        {
-          claude: {
-            current: "opendesign",
-            providers: {
-              opendesign: {
-                name: "OpenDesign",
-                baseUrl: "https://amr-link.open-design.ai",
-                apiKey: "sk-amr-runtime",
-              },
-            },
-          },
-        },
+        OPEN_DESIGN_ROUTE,
+        [[".amr/config.json", AMR_CONFIG]],
         [
           [
-            ".amr/config.json",
+            "https://amr-api.open-design.ai/api/v1/billing/summary",
             JSON.stringify({
-              profiles: {
-                prod: {
-                  controlKey: "ctl-prod",
-                  runtimeKey: "sk-amr-runtime",
-                  apiUrl: "https://amr-api.open-design.ai",
-                },
+              balanceUsd: "1.5000",
+              totalAvailableCreditsUsd: "1.5000",
+              membershipTier: "go",
+              subscriptionStatus: "active",
+              subscriptionCurrentPeriodEnd: "2026-11-19T10:14:11.000Z",
+            }),
+          ],
+          [
+            // 更长的前缀必须排在 `/api/v1/workspaces` 之前（fixture 按前缀顺序匹配）。
+            "https://amr-api.open-design.ai/api/v1/workspaces/ws-personal-1/billing/funding-check",
+            JSON.stringify({
+              codingPlan: {
+                eligible: true,
+                tier: "go",
+                windows: [
+                  {
+                    durationSeconds: 18000,
+                    usedCredits: "243",
+                    limitCredits: "50000",
+                    remainingCredits: "49757",
+                    resetsAt: "2026-10-19T20:14:11.000Z",
+                  },
+                  {
+                    durationSeconds: 604800,
+                    usedCredits: "8791",
+                    limitCredits: "150000",
+                    remainingCredits: "141209",
+                    resetsAt: "2026-10-26T10:14:11.000Z",
+                  },
+                ],
               },
             }),
           ],
+          [
+            "https://amr-api.open-design.ai/api/v1/workspaces",
+            JSON.stringify({
+              items: [
+                {
+                  workspaceId: "ws-personal-1",
+                  workspaceType: "personal",
+                  workspaceMemberId: "wm-1",
+                  memberStatus: "active",
+                  lifecycleState: "active",
+                },
+              ],
+            }),
+          ],
         ],
+      ),
+      copy("zh-CN"),
+    );
+    await store.init();
+
+    const snapshot = store.getSnapshot().snapshot;
+    expect(snapshot?.kind).toBe("subscription");
+    expect(snapshot?.providerName).toBe("Open Design");
+    expect(snapshot?.planName).toBe("Open Design Go");
+    expect(snapshot?.quotaWindows).toHaveLength(2);
+    expect(snapshot?.quotaWindows?.[0]).toMatchObject({ kind: "duration", durationMins: 300 });
+    expect(snapshot?.error).toBeNull();
+  }, 30_000);
+
+  it("shows the account balance when the account has no subscription", async () => {
+    const store = new BalanceStore(
+      quotaCtx(
+        OPEN_DESIGN_ROUTE,
+        [[".amr/config.json", AMR_CONFIG]],
         [
           [
             "https://amr-api.open-design.ai/api/v1/billing/summary",
@@ -392,6 +461,7 @@ describe("BalanceStore coding-plan routes", () => {
               subscriptionCreditsUsd: "1.0000",
               rechargeCreditsUsd: "0.5000",
               membershipTier: "go",
+              subscriptionStatus: "none",
             }),
           ],
         ],
@@ -405,7 +475,7 @@ describe("BalanceStore coding-plan routes", () => {
     expect(snapshot?.providerName).toBe("Open Design");
     expect(snapshot?.currency).toBe("USD");
     expect(snapshot?.amount).toBe(1.5);
-    expect(snapshot?.planName).toBe("Open Design Go");
+    expect(snapshot?.detail).toBe("订阅 $1.00 + 充值 $0.50");
     expect(snapshot?.error).toBeNull();
   }, 30_000);
 

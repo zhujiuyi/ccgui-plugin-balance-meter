@@ -433,6 +433,8 @@ export class BalanceStore {
     unavailablePrefix: string;
     cliLoginExpired: string | null;
     cliLoginMissing: string | null;
+    /** 计划名的完整文案（品牌名 + 等级）；缺省时按 planType 首字母大写。 */
+    planNameOverride?: string | null;
   }): BalanceSnapshot {
     const { result } = options;
     if (!result.windows || result.windows.length === 0) {
@@ -455,9 +457,9 @@ export class BalanceStore {
       amount: primary.remaining,
       total: 100,
       used: primary.used,
-      planName: planType
-        ? `${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
-        : null,
+      planName:
+        options.planNameOverride ??
+        (planType ? `${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : null),
       detail: null,
       quotaWindows: windows,
       endpoint: options.endpoint,
@@ -621,7 +623,7 @@ export class BalanceStore {
         this.state.home ?? "",
         hostnameOf(route.gateway),
       );
-      if (!result.amount) {
+      if (!result.balance && !result.plan) {
         const error =
           result.error === "expired" || result.error === "unauthorized"
             ? this.t.openDesignLoginExpired
@@ -635,11 +637,33 @@ export class BalanceStore {
           error,
         );
       }
+      // 有订阅 → 默认显示订阅额度窗口；没有订阅才显示账户余额。
+      if (result.plan) {
+        const planName = result.plan.planType
+          ? `Open Design ${result.plan.planType.charAt(0).toUpperCase()}${result.plan.planType.slice(1)}`
+          : this.t.openDesignProviderName;
+        return this.planSnapshot({
+          providerId: "opendesign",
+          providerName: this.t.openDesignProviderName,
+          result: {
+            windows: result.plan.windows,
+            planType: result.plan.planType,
+            error: null,
+            detail: null,
+          },
+          endpoint: result.planEndpoint ?? result.endpoint ?? "",
+          endpointLabel: this.t.openDesignPlanEndpointLabel,
+          unavailablePrefix: this.t.openDesignUsageUnavailable,
+          cliLoginExpired: null,
+          cliLoginMissing: null,
+          planNameOverride: planName,
+        });
+      }
       return this.snapshotFrom(
         "opendesign",
         this.t.openDesignProviderName,
         "api",
-        result.amount,
+        result.balance!,
         result.endpoint ?? "",
         this.t.openDesignEndpointLabel,
         null,
