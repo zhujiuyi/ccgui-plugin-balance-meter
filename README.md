@@ -1,22 +1,34 @@
 # balance-meter（余额与余量）
 
-CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与计费方式**，再查询对应的余额或订阅余量。
+CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与计费方式**，查询并显示对应的 API 余额或订阅余量。
 
-- **API 计费**的供应商 → 查余额（如 DeepSeek `GET /user/balance`）
-- **订阅计划** → 查订阅/配额余量
-- 供应商没有公开接口 → 明确显示「暂时无法提供余额显示」，不猜数字
+- **按量计费**的供应商 → 显示账户余额
+- **订阅计划** → 显示各额度窗口的剩余百分比与重置时间
+- 供应商没有可用的查询接口 → 明确说明查不到，不显示猜测的数字
+
+## 功能
+
+- **状态栏 chip**：随时看到当前渠道的余量。订阅渠道显示最短的额度窗口（如「5小时 98%」），
+  按量渠道显示余额金额；查不到时显示「无法查询」。
+- **详情面板**：供应商、计费方式、订阅计划、各额度窗口、查询地址与最近查询时间，可手动刷新。
+- **设置页**：当前路由详情、查询地址可手工修改、全部路由清单与诊断信息。
+- **自动刷新**：打开 CC GUI、切换标签 / 会话 / 引擎、每轮对话结束后自动更新。
+- **渠道识别**：自动读取 CC GUI 的自定义渠道，以及 claude、codex、kimi、grok、dsh、opencode
+  等引擎的本地登录信息，不需要手工配置。
 
 ## 安装
 
-CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安装（见下方「开发」）。
+- **插件市场**：CC GUI → 设置 → 插件 → 插件市场 → 搜索「余额与余量」→ 安装。
+- **本地安装**：先构建产物，再 CC GUI → 设置 → 插件 → 从本地目录安装，选择 `dist/` 目录
+  （不是仓库根目录，宿主需要 `main.js` 与 `manifest.json` 位于同一层）。
 
-## 界面预览
+## 界面
 
 状态栏面板：按当前路由显示 API 余额或订阅余量（左浅色 / 右深色）。
 
 ![状态栏面板](docs/screenshot-1.png)
 
-订阅渠道按窗口展示额度（滚动 / 每周 / 每月）。
+订阅渠道按窗口展示额度。
 
 ![订阅额度窗口](docs/screenshot-2.png)
 
@@ -26,158 +38,118 @@ CC GUI → 设置 → 插件 → 插件市场 → 安装；或从本地目录安
 
 > 以上为界面示意，数字为示例数据。
 
-## 它显示什么
-
-- **状态栏 chip**：当前路由的余额/余量（查不到时显示「无法查询」），点开是详情面板
-- **详情面板**：引擎 / 供应商 / 计费方式 / 当前余量 / 查询地址 / 最近查询时间，以及「立即刷新」
-- **设置页**：同上面板 + 查询地址可手工修改 + 路由清单与诊断
-
 ## 什么时候会更新
 
 | 时机 | 行为 |
 |---|---|
-| 打开 CC GUI | 对准上次使用的引擎（或宿主回放的当前会话），立即查询一次 |
+| 打开 CC GUI | 对准上次使用的引擎（或当前会话），立即查询一次 |
 | 切换标签 / 选择会话 | 切到该引擎的路由，重新查询 |
-| 每轮对话结束 | 自动刷新一次（两次刷新之间至少间隔 30 秒） |
+| 每轮对话结束 | 自动刷新一次（两次自动刷新之间至少间隔 30 秒，可在设置中调整） |
 | 手动 | 状态栏面板「立即刷新」、设置页「刷新全部路由」、命令面板「刷新余额与余量」 |
 
-查询成功的接口会**按路由（域名 + 路径）缓存**，下次直接命中；缓存地址失效时自动重新探测，
-全部失败后 10 分钟内不再重复请求（手动刷新可强制重探）。
+查询成功的接口会按路由（域名 + 路径）缓存，下次直接命中；缓存地址失效时自动重新探测。
+全部探测失败后 10 分钟内不再重复请求，手动刷新可强制重探。
 
-## 工作方式
+## 支持的供应商
 
-1. **识别路由**：读 `~/.ccgui-next/config.json` 的 `providers` / `current`；`current` 为
-   `__local_settings_json__` 时改读该引擎自己的配置——已覆盖 claude、codex、kimi、grok、
-   dsh（`~/.dsh/.credentials.yaml` 的 API key）、opencode（`~/.local/share/opencode/auth.json`，
-   Go 订阅；Zen 按量无接口）；Open Design 渠道的余额另读客户端登录的 `~/.amr/config.json`。
-   Codex 使用 ChatGPT
-   账号登录且没有自定义 `base_url` 时，调用官方 `codex app-server` 的
-   `account/rateLimits/read` 获取订阅额度窗口；Claude Code 使用订阅账号（OAuth）登录且没有
-   自定义网关与 API key 时，读 `~/.claude/.credentials.json` 并查询内部用量接口
-   `api/oauth/usage`（5 小时 / 7 天窗口；实验性，令牌过期只提示重新登录、不代为刷新）。
-2. **判断供应商**：网关命中已知编程套餐渠道（Kimi Coding / 智谱 GLM·Z.AI / MiniMax）或
-   Claude / Codex 的订阅登录时，走各自的额度适配器（见下表）；否则按网关主机名匹配内置
-   供应商目录，未命中则按常见中转站的余量接口**依次探测**（顺序见下表下方）。
-3. **查询与缓存**：命中即按路由缓存该接口地址，下次直接使用；地址失效会自动重探。
-
-## 收录的供应商（与 ccgui 自定义渠道预设表对齐）
-
-**没有公开余额接口的也一律收录**，这样提示是「XX 官方未提供余额接口」这类确定结论，
-而不是含糊的「未知供应商」。
-
-| 供应商 | 网关域名 | 计费 | 余额/余量接口 |
+| 供应商 | 网关域名 | 计费 | 能查到什么 |
 |---|---|---|---|
-| DeepSeek | api.deepseek.com | API | ✅ `GET /user/balance`（API key 路由，含 dsh 命令行读到的 key） |
-| OpenRouter | openrouter.ai | API | ✅ `GET /api/v1/key`（本 Key 上限剩余）；`/api/v1/credits` 需 Management Key，普通 Key 会 403 |
-| Moonshot / Kimi | api.moonshot.cn / .ai | API | ✅ `GET /v1/users/me/balance` |
-| SiliconFlow | *.siliconflow.cn / .com | API | ✅ `GET /v1/user/info` |
-| OpenAI（官方直连） | api.openai.com | API | ⚠️ `GET /v1/dashboard/billing/subscription`（现多为会话 key 专用） |
-| 智谱 GLM / Z.AI 编码套餐 | open.bigmodel.cn · api.z.ai | 订阅 | ✅ `GET /api/monitor/usage/quota/limit`（5 小时 / 每周；**已用真实套餐实测**） |
-| Z.AI 编码套餐 | api.z.ai | 订阅 | ❌ 无公开接口 |
-| Kimi Coding | api.kimi.com | 订阅 | ✅ `GET /coding/v1/usages`（5 小时 / 每周；API key 或 Kimi Code CLI 登录） |
-| MiniMax 编程套餐 | api.minimaxi.com · api.minimax.io · api.minimax.chat | 订阅 | ✅ `GET /v1/token_plan/remains`（API key 通道；旧的 `coding_plan/remains` 走控制台 Cookie，作回退） |
-| Xiaomi MiMo | api.xiaomimimo.com | API | ❌ 无公开接口 |
-| Xiaomi MiMo Token Plan | token-plan-{cn,ams,sgp}.xiaomimimo.com | 订阅 | ❌ 无公开接口 |
-| 阿里云百炼 Bailian | *.dashscope.aliyuncs.com | API | ❌ 仅控制台可见 |
-| LongCat | api.longcat.chat | API | ❌ 无公开接口 |
-| OpenCode Go | opencode.ai/zen/go | 订阅 | ✅ `GET /zen/go/v1/usage`（滚动/周/月窗口；API key 或 OpenCode CLI 登录） |
-| OpenCode Zen（按量） | opencode.ai/zen | API | ❌ 官方无公开余额接口（仅网页控制台） |
-| Open Design（AMR / Vela） | amr-link.open-design.ai · *.powerformer.net | 订阅 / API | ✅ 有订阅：`GET /api/v1/workspaces/{id}/billing/funding-check` 的 `codingPlan.windows`（5 小时 / 每周）；无订阅：`GET /api/v1/billing/summary` 的账户余额。均读客户端登录的 controlKey（网关用的 `sk-amr-` runtime key 查不了账单） |
-| Anthropic 官方 | api.anthropic.com | API | ❌ 无公开接口 |
-| OpenAI 订阅 | chatgpt.com | 订阅 | ✅ Codex App Server `account/rateLimits/read` |
-| Claude 订阅 | api.anthropic.com（OAuth 登录） | 订阅 | ⚠️ 内部接口 `GET /api/oauth/usage`（实验性，未真机验证） |
-| Grok 订阅（Grok CLI 登录） | cli-chat-proxy.grok.com | 订阅 | ✅ `GET /v1/billing?format=credits`（信用池周期） |
-| xAI Grok | api.x.ai | API | ❌ 无公开接口 |
-| Groq / Mistral / Together / Google Gemini | api.groq.com · api.mistral.ai · api.together.xyz · generativelanguage.googleapis.com | API | ❌ 无公开接口 |
-| 未识别的中转站 | 任意其它域名 | 由返回值推断 | 依次探测（见下） |
+| DeepSeek | api.deepseek.com | 按量 | 账户余额（含 dsh 命令行读到的 API Key） |
+| OpenRouter | openrouter.ai | 按量 | 本 Key 的额度上限与剩余；账户总额度需要 Management Key |
+| Moonshot / Kimi | api.moonshot.cn / .ai | 按量 | 账户余额 |
+| SiliconFlow | *.siliconflow.cn / .com | 按量 | 账户余额 |
+| OpenAI（官方直连） | api.openai.com | 按量 | 账单额度（部分账号不可用） |
+| 智谱 GLM / Z.AI 编码套餐 | open.bigmodel.cn · api.z.ai | 订阅 | 5 小时 / 每周额度 |
+| Kimi Coding | api.kimi.com | 订阅 | 5 小时 / 每周额度（API Key 或 Kimi Code CLI 登录） |
+| MiniMax 编程套餐 | api.minimaxi.com · api.minimax.io · api.minimax.chat | 订阅 | 5 小时 / 每周额度 |
+| OpenCode Go | opencode.ai/zen/go | 订阅 | 滚动 / 每周 / 每月额度（API Key 或 OpenCode CLI 登录） |
+| Open Design（AMR / Vela） | amr-link.open-design.ai · *.powerformer.net | 订阅 / 按量 | 有订阅：5 小时 / 每周额度；无订阅：账户可用余额（需安装并登录 Open Design 客户端） |
+| OpenAI 订阅 | chatgpt.com | 订阅 | 5 小时 / 每周额度（Codex 使用 ChatGPT 账号登录时） |
+| Claude 订阅 | api.anthropic.com | 订阅 | 5 小时 / 7 天额度（Claude Code 使用订阅账号登录时，实验性） |
+| Grok 订阅 | cli-chat-proxy.grok.com | 订阅 | 当前计费周期的额度（Grok CLI 登录时） |
+| 常见中转站 | 任意其它域名 | 按返回值推断 | 依次尝试常见接口，部分站点可显示 5 小时 / 每日 / 每周窗口 |
 
-中转站探测顺序（2026-10 复核后重排，均只用站点发给用户的 API key）：
+以下供应商没有公开的余额或余量接口，插件会直接说明原因：OpenCode Zen（按量）、Anthropic 官方、
+Z.AI 编码套餐、Xiaomi MiMo 及其 Token Plan、阿里云百炼、LongCat、xAI Grok、Groq、Mistral、
+Together、Google Gemini。
 
-1. `GET /api/usage/token/`（New-API ≥ v0.9.0，一次请求直出剩余额度）
-2. `GET /v1/dashboard/billing/subscription` + `/usage`（剩余 = 总额度 − 已用美分）
+### 中转站探测顺序
+
+未识别的域名会依次尝试下列接口（均只使用站点发给用户的 API Key）：
+
+1. `GET /api/usage/token/`（New-API，一次请求直出剩余额度）
+2. `GET /v1/dashboard/billing/subscription` + `/usage`（剩余 = 总额度 − 已用）
 3. `GET /v1/usage`（Sub2API 系，可带 5 小时 / 每日 / 每周窗口）
-4. `GET /api/v1/me/quota`（claude-code-hub，`X-Api-Key` 头）
+4. `GET /api/v1/me/quota`（claude-code-hub）
 5. `GET /dashboard/billing/credit_grants`（CloseAI 系）
 6. `GET /api/v1/credits`
-7. `GET /api/user/self`（仅个别变体支持；正版 New-API 需要面板访问令牌，`sk-` 令牌打不通）
+7. `GET /api/user/self`（仅个别变体支持）
 
-前两条会先免认证地读一次 `/api/status`，按站点自己的 `quota_per_unit` 与 `quota_display_type`
-换算——New-API 的记账单位站主可改，硬编码 500000 会差若干个数量级。
+前两条会先读取站点的 `/api/status`，按站点自己声明的记账单位换算，避免金额数量级出错。
 
-> `❌` 的判定依据：2026-10 复核，对每个域名做了「无凭据探测 + 伪装路径对照」区分
-> 「路由不存在」与「需要认证」，并对照官方文档与上游实现源码；结果与 2026-09 首次普查一致。
-> 若某家后来上线了接口，在设置里把路径填进「自定义余量接口」即可，支持 `{base}` / `{origin}`
-> 占位符，无需改代码。
+### 自定义查询地址
 
-## 权限说明（重要）
+如果服务商有查询接口但不在上表中，可在插件设置里为该路由填写「查询地址」，保存后立即生效。
+地址支持 `{base}`（完整网关地址）与 `{origin}`（协议 + 域名）占位符，查询时使用该路由的 API Key。
+留空即恢复自动探测。
 
-插件声明了 `exec:curl`，以及 `exec:cmd` / `exec:powershell.exe`（Windows）、
-`exec:sh`（macOS、Linux）：
+## 权限与隐私
 
-1. 宿主的网络出口（`plugin_http_request`）要求**预先声明具体域名**，而"按实际路由识别中转站"
-   本质上无法预知域名，所以必须走 exec 出口；
-2. `cmd` / `sh` 仅用于取用户目录（`echo %USERPROFILE%` / `printf %s "$HOME"`）；
-3. `curl` 用于读 `~/.ccgui-next/config.json` 与各引擎配置（含 `~/.claude/.credentials.json`、
-   `~/.kimi-code/credentials/kimi-code.json`、`~/.grok/auth.json`、`~/.dsh/.credentials.yaml`、
-   `~/.local/share/opencode/auth.json`、`~/.amr/config.json`），以及向**该路由自己的供应商**发起只读查询；
-4. Codex 官方 ChatGPT 登录模式由 PowerShell / sh 向本机 `codex app-server` 写入官方 JSON-RPC
-   请求来查询额度；查询过程不把登录 Token 放进命令行，也不自行向远端传递 Token。Claude 订阅
-   令牌只作为 curl 鉴权头发送给 Anthropic 自己的用量接口，不写日志、不入插件存储；
-5. **不读取宿主内部状态**：当前引擎只来自官方事件（`session://activated` 与 usage 载荷里的
-   `engine`）；密钥只用于上述只读查询，不落盘、不入日志、不外发第三方。
+插件声明了 `exec:curl`，以及 `exec:cmd` / `exec:powershell.exe`（Windows）、`exec:sh`（macOS、Linux）：
+
+- 宿主的网络出口要求预先声明域名，而按实际路由识别渠道无法预知域名，因此网络请求通过系统自带的
+  `curl` 完成；
+- `cmd` / `sh` 只用于获取用户目录；
+- `curl` 读取本机各 AI 工具的配置与登录信息，并向**当前路由对应的供应商**发起只读查询；
+- Codex 的 ChatGPT 订阅额度通过本机 `codex app-server` 查询；
+- **不读取 CC GUI 的内部状态**：当前引擎只来自官方事件（`session://activated` 与 usage 载荷）；
+- 凭证只用于上述只读查询，不写入插件存储、不写日志、不发送给任何第三方；
+- 登录过期时只提示重新登录，不会替用户刷新凭证（避免破坏原有登录态）。
+
+读取的本地文件：
+
+| 文件 | 用途 |
+|---|---|
+| `~/.ccgui-next/config.json` | CC GUI 的自定义渠道与当前渠道 |
+| `~/.claude/settings.json`、`~/.claude/.credentials.json` | Claude 的网关与订阅登录 |
+| `~/.codex/config.toml`、`~/.codex/auth.json` | Codex 的网关与登录 |
+| `~/.kimi-code/credentials/kimi-code.json` | Kimi Code CLI 登录 |
+| `~/.grok/auth.json` | Grok CLI 登录 |
+| `~/.dsh/.credentials.yaml` | DeepSeek Harness 的 API Key |
+| `~/.local/share/opencode/auth.json` | OpenCode 登录 |
+| `~/.amr/config.json` | Open Design 客户端登录 |
 
 ## 适用平台
 
-| 平台 | 状态 | 说明 |
-|---|---|---|
-| **Windows** | ✅ 已实测 | 用 `cmd /d /c echo %USERPROFILE%` 定位家目录；家目录为 `C:\Users\x` 时路径沿用 `\`（读取时转成 `file:///C:/…`）。其中**智谱 GLM 套餐通道已用真实套餐（Lite）端到端验证**，**OpenCode Go 与 Sub2API 系中转已用真实账号验证**；Claude 订阅、Kimi、MiniMax、Grok 四条通道目前仅单测与夹具覆盖。 |
-| **macOS / Linux** | ⚠️ 已适配，尚未真机验证 | 改用 `sh -c 'printf %s "$HOME"'`、路径用 `/`；curl 参数本身跨平台通用。 |
+- **Windows**：支持。
+- **macOS / Linux**：已适配，尚未在真机上验证；若路径或命令行为有差异，可反馈。
 
-平台判断读 webview 的 `navigator.userAgentData.platform` / `navigator.userAgent`，判不出来时按
-已实测的 Windows 分支走。样式侧 `backdrop-filter` 带 `-webkit-` 前缀（macOS WKWebView 需要），
-Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功能。
+当前会话的即时识别依赖较新版本的 CC GUI；旧版本可能在切换一次标签或发送一条消息后才显示正确。
 
-> **宿主版本**：启动瞬间就认对引擎依赖 `session://activated` 的粘性回放
-> （上游 [PR #1254](https://github.com/zhukunpenglinyutong/desktop-cc-gui/pull/1254)）。
-> 更早的宿主首帧会显示「未确认」，切一次标签或发一条消息后自动纠正。
+## 已知限制
 
-## 已知边界
-
-- Anthropic Pro / Max 没有公开余量接口；Codex 的 ChatGPT 登录模式可通过官方 App Server
-  显示主、次两个额度窗口。若本机 `codex` 版本过旧或命令不在 PATH，查询会失败并显示原因。
-- 中转站的余量接口差异极大：探测失败的可在设置里用「自定义余量接口」手工指定。
-- 中转站对**额度耗尽的令牌**常直接返回 401，插件会显示为查询失败而不是 0（这是站点行为，不是插件算错）。
-- New-API 的**订阅制**（`/api/subscription/self`）只接受面板访问令牌，站点发给用户的 `sk-` 令牌打不通，因此套餐窗口暂无支持。
-- xAI 的团队余额在 Management API：需要另配 management key 与 team id，插件不自动读取。
-- 其余引擎（pi / omp / qoder / agy）暂未接入：omp 的凭证在 SQLite 里、qoder 需要手贴 Cookie 或读桌面日志、agy 的令牌有效期只有 1 小时且插件不代刷新。
+- 订阅类渠道的额度窗口由各家服务商定义，没有窗口数据时不会显示。
+- 中转站接口差异很大；探测失败时可用「查询地址」手工指定。
+- 中转站对额度耗尽的令牌常直接返回 401，此时显示为查询失败而不是 0。
+- New-API 的订阅制额度需要面板访问令牌，站点发给用户的 API Key 无法查询。
+- xAI 的团队余额在 Management API 中，需要额外的 management key 与 team id，插件不自动读取。
+- Open Design 的余额属于账户，需要本机安装并登录 Open Design 客户端；渠道里配置的网关 Key
+  只能用于模型推理，不能查询账单。
+- pi / omp / qoder / agy 引擎暂未接入：凭证格式或登录方式暂不适合只读查询。
 
 ## 更新记录
 
 ### 0.3.0
 
-- **新增 Open Design（AMR / Vela）渠道**：按当前路由识别 `amr-link.open-design.ai`
-  及 feature/test 网关，读取本机 Open Design 客户端登录的 controlKey 查询额度。
-  - **有订阅时默认显示订阅额度**：5 小时与每周两个窗口（已用百分比 + 重置时间），
-    与其它套餐渠道的展示口径一致。
-  - **没有订阅时才显示账户余额**：订阅额度 + 充值额度的可用总额。
-  - 渠道配置里的 `sk-amr-` runtime key 只能用于网关推理（账单接口返回 401），
-    插件不会拿它去查余额。
-  - 未安装/未登录客户端、登录过期时分别给出明确提示，不代刷新凭证。
+- 新增 Open Design（AMR / Vela）渠道：有订阅时显示 5 小时 / 每周额度，无订阅时显示账户可用余额。
+- 订阅渠道的状态栏改为显示最短额度窗口（如「5小时 98%」），面板不再重复显示总额。
 
 ### 0.2.2
 
-- **常见中转站的支持面扩大**：按「API key 真的打得通」的顺序探测，并优先采用站点自己声明的记账单位。
-  支持 New-API（含一次请求直出余额的令牌额度接口）、Sub2API、claude-code-hub、CloseAI 等；
-  部分中转站还能显示 5 小时 / 每日 / 每周窗口。
-- **修正四处查询错误**：
-  - OpenRouter 改为显示本 Key 的额度上限剩余（账户总额度接口需要 Management Key，普通 Key 会失败）。
-  - MiniMax 编程套餐改用 API key 通道，修复此前查不到的问题。
-  - SiliconFlow 改取账户总额（此前会先取到最小的赠金字段）。
-  - Moonshot 国际站币种正确显示为美元（此前固定标成人民币）。
-- **新增两个引擎的本地登录识别**：dsh（DeepSeek 命令行）与 OpenCode；
-  OpenCode Zen 按量付费会明确说明查不到，而不是含糊报错。
-- **更正「查不到」的原因说明**：Anthropic、智谱、Kimi、MiniMax 等此前的提示与实际能力不符。
-- 令牌额度已用尽的站点可能直接拒绝返回余额，此时显示为查询失败，而不是 0 余额。
+- 扩大常见中转站的支持范围，按实际可用的接口顺序探测，并按站点声明的记账单位换算。
+- 修正 OpenRouter、MiniMax、SiliconFlow、Moonshot 的取值与币种问题。
+- 新增 dsh 与 OpenCode 引擎的本地登录识别。
+- 更正各渠道「查不到」的提示文案。
 
 ### 0.2.1
 
@@ -192,36 +164,18 @@ Linux WebKitGTK 若不支持毛玻璃会退化为半透明底，均不影响功�
 
 ```bash
 pnpm install
-pnpm typecheck && pnpm test          # 单测：路由 / 供应商 / 缓存 / 编辑态 / 跨平台分支
-pnpm build                           # 产物默认输出到仓库内 dist/，可用 CCGUI_PLUGIN_OUT_DIR 覆盖
+pnpm typecheck && pnpm test          # 类型检查与单元测试
+pnpm build                           # 构建到 dist/（可用 CCGUI_PLUGIN_OUT_DIR 覆盖）
 pnpm validate && pnpm validate:dist  # 本地预检，镜像市场 CI 的门槛
 ```
 
-本地调试：先 `pnpm build`，再 CC GUI → 设置 → 插件 → 从本地目录安装 → 选**产物目录
-`dist/`**（≈ `E:\ccgui-plugin\plugin-balance-meter\dist`）。
+本地调试：`pnpm build` 后从 `dist/` 目录安装；修改代码后重新构建并再次安装即可（宿主会热加载）。
 
-> ⚠️ 不要选仓库根目录：宿主要求 `tier: "js"` 插件的 `main.js` 与 `manifest.json`
-> 位于所选目录的同一层；仓库根的 `main.js` 是构建产物且被 `.gitignore` 忽略，
-> 根目录里只有 `dist/main.js`，选根目录会以「tier "js" requires main.js」被拒绝。
-> 改完重新 build 再装一次即可（宿主安装的是拷贝快照并立即热加载，无需重启）。
+发版：更新 `manifest.json` 的 `version`，然后 `git tag <version> && git push origin <version>`。
+仓库的 GitHub Action 会构建并把 `main.js` / `manifest.json` / `checksums.txt` 附到 Release。
 
-发版：改 `manifest.json` 的 `version` → `git tag <version> && git push origin <version>`；
-仓库自带的 GitHub Action 会构建并把 `main.js` / `manifest.json` / `checksums.txt` 附到 Release。
-
-展示素材：`docs/icon.png` 与 `docs/screenshot-*.png` 由 manifest 的 `icon` / `screenshots`
-声明，市场按仓库**默认分支**读取（替换同名文件不需要发版，改路径要随下次发版登记）；
-图标源文件是 `docs/icon.svg`。
-
-## 实现备注（给插件作者）
-
-1. **样式要走 `ctx.theme.injectCss`**（源码用 `src/ui.css` + 构建时 `?inline`），不要产出
-   `styles.css`：宿主对 `styles.css` 的自动注入会包进最低优先级的 `@layer ccgui-plugins`，
-   而 Tailwind preflight 在更高的 `base` 层里写着 `button{background-color:transparent;
-   border-radius:0}` 与 `*{padding:0;border:0 solid}`，会把按钮底色、圆角、内边距、边框整片
-   盖掉（层序优先于选择器特异性）。
-2. **当前引擎只来自官方事件**（`session://activated`、usage 载荷的 `engine`），不读宿主内部
-   状态；引擎已确认时只认该引擎的路由，找不到就明说「未识别到该引擎的路由配置」，
-   绝不跨引擎回退到别人的数据。
+展示素材由 manifest 的 `icon` / `screenshots` 声明，市场按仓库默认分支读取；图标源文件为
+`docs/icon.svg`。
 
 ## License
 
