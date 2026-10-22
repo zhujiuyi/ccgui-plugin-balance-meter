@@ -13,7 +13,7 @@ CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与�
 - **详情面板**：供应商、计费方式、订阅计划、各额度窗口、查询地址与最近查询时间，可手动刷新。
 - **设置页**：当前路由详情、查询地址可手工修改、全部路由清单与诊断信息。
 - **自动刷新**：打开 CC GUI、切换标签 / 会话 / 引擎、每轮对话结束后自动更新。
-- **渠道识别**：自动读取 CC GUI 的自定义渠道，以及 claude、codex、kimi、grok、dsh、opencode
+- **渠道识别**：自动读取 CC GUI 的自定义渠道，以及 claude、codex、kimi、grok、dsh、opencode、pi
   等引擎的本地登录信息，不需要手工配置。
 
 ## 安装
@@ -54,7 +54,7 @@ CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与�
 
 | 供应商 | 网关域名 | 计费 | 能查到什么 |
 |---|---|---|---|
-| DeepSeek | api.deepseek.com | 按量 | 账户余额（含 dsh 命令行读到的 API Key） |
+| DeepSeek | api.deepseek.com | 按量 | 账户余额（含 pi / dsh 读到的 API Key） |
 | OpenRouter | openrouter.ai | 按量 | 本 Key 的额度上限与剩余；账户总额度需要 Management Key |
 | Moonshot / Kimi | api.moonshot.cn / .ai | 按量 | 账户余额 |
 | SiliconFlow | *.siliconflow.cn / .com | 按量 | 账户余额 |
@@ -117,6 +117,7 @@ Together、Google Gemini。
 | `~/.grok/auth.json` | Grok CLI 登录 |
 | `~/.dsh/.credentials.yaml` | DeepSeek Harness 的 API Key |
 | `~/.local/share/opencode/auth.json` | OpenCode 登录 |
+| `~/.pi/agent/auth.json`、`~/.pi/agent/models.json` | pi 的登录凭证与自定义 / 代理网关 |
 | `~/.amr/config.json` | Open Design 客户端登录 |
 
 ## 适用平台
@@ -135,7 +136,9 @@ Together、Google Gemini。
 - xAI 的团队余额在 Management API 中，需要额外的 management key 与 team id，插件不自动读取。
 - Open Design 的余额属于账户，需要本机安装并登录 Open Design 客户端；渠道里配置的网关 Key
   只能用于模型推理，不能查询账单。
-- pi / omp / qoder / agy 引擎暂未接入：凭证格式或登录方式暂不适合只读查询。
+- pi 引擎读取 `~/.pi/agent/auth.json` 与 `models.json`；登录了多个供应商且没有 `defaultProvider`
+  时不会猜测当前账户，只给出提示。
+- omp / qoder / agy 引擎暂未接入：凭证格式或登录方式暂不适合只读查询。
 
 ## 更新记录
 

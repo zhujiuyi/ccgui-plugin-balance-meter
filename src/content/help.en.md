@@ -13,6 +13,7 @@ The plugin follows the channel your current session actually uses and shows its 
 - Zhipu GLM / Z.AI coding plan: the 5-hour and weekly windows, using the plan's own API key.
 - MiniMax coding plan: the 5-hour and weekly windows, using the plan's own API key.
 - Grok subscription: when the Grok CLI is signed in locally, the current billing period's usage.
+- pi: reads the local pi login and custom gateways and queries the active provider; when several providers are signed in, set a default provider in pi first.
 - Open Design: when the Open Design app is installed and signed in locally, the subscription quota (5-hour and weekly windows) if one is active, otherwise the available account credit (subscription plus top-up).
 - Common relays: several well-known query styles are tried, and a hit shows the balance — some relays also expose 5-hour, daily, and weekly windows.
 
