@@ -339,10 +339,21 @@ function piAuthCredential(entry: unknown): string | null {
   return str(value.key) ?? str(value.access) ?? null;
 }
 
-/** models.json 的 apiKey 支持 $ENV 与 !命令 插值，这类值不能直接当凭证用。 */
-function piModelKey(entry: unknown): string | null {
-  const key = str(record(entry)?.apiKey);
-  return key && !/^[$!]/.test(key) ? key : null;
+type PiModelKey =
+  | { kind: "absent" }
+  | { kind: "literal"; value: string }
+  | { kind: "unreadable" };
+
+/** 显式但不可读的 apiKey 仍是凭证覆盖，不能当作缺失而回退到其他密钥。 */
+function piModelKey(entry: unknown): PiModelKey {
+  const model = record(entry);
+  if (!model || !Object.prototype.hasOwnProperty.call(model, "apiKey")) {
+    return { kind: "absent" };
+  }
+  const key = str(model.apiKey);
+  return key && !/^[$!]/.test(key)
+    ? { kind: "literal", value: key }
+    : { kind: "unreadable" };
 }
 
 async function readPiLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
@@ -358,17 +369,13 @@ async function readPiLocal(ctx: PluginContext, home: string): Promise<LocalRoute
   const modelProviders = record(models?.providers) ?? {};
   const authProviders = record(auth) ?? {};
   const authIds = Object.keys(authProviders).filter((id) => piAuthCredential(authProviders[id]));
-  const customIds = Object.keys(modelProviders).filter((id) => piModelKey(modelProviders[id]));
+  const customIds = Object.keys(modelProviders).filter(
+    (id) => piModelKey(modelProviders[id]).kind !== "absent",
+  );
+  const known = [...new Set([...authIds, ...customIds])];
   const preferred = str(settings?.defaultProvider);
-  const preferredUsable =
-    preferred && (authIds.includes(preferred) || customIds.includes(preferred)) ? preferred : null;
-  const providerId =
-    preferredUsable ??
-    (authIds.length === 1
-      ? authIds[0]
-      : authIds.length === 0 && customIds.length === 1
-        ? customIds[0]
-        : null);
+  // 先确认供应商身份，再检查凭证；不可读的默认项不能让余额跳到另一个账户。
+  const providerId = preferred ?? (known.length === 1 ? known[0] : null);
   const empty: LocalRoute = {
     gateway: null,
     credential: null,
@@ -376,17 +383,24 @@ async function readPiLocal(ctx: PluginContext, home: string): Promise<LocalRoute
     source: authPath,
   };
   if (!providerId) {
-    const known = [...authIds, ...customIds.filter((id) => !authIds.includes(id))];
     if (known.length > 1) {
       return {
         ...empty,
-        note: `pi: 有多个已登录供应商（${known.join(" / ")}），无法确认当前会话供应商；可在 pi 里设置 defaultProvider 后再刷新`,
+        note: `pi: 有多个已登录供应商或已配置密钥的供应商（${known.join(" / ")}），无法确认当前会话供应商；可在 pi 里设置 defaultProvider 后再刷新`,
       };
     }
     return { ...empty, note: `pi: 未在 ${authPath} 找到可用的登录凭证，未猜测余额` };
   }
   const model = record(modelProviders[providerId]);
-  const literalKey = piModelKey(model);
+  const modelKey = piModelKey(model);
+  if (modelKey.kind === "unreadable") {
+    return {
+      ...empty,
+      source: modelsPath,
+      note: `pi: 供应商 ${providerId} 在 ${modelsPath} 的 apiKey 插件无法读取（环境变量、命令或无效值），未回退到登录凭证，未猜测余额`,
+    };
+  }
+  const literalKey = modelKey.kind === "literal" ? modelKey.value : null;
   const authEntry = record(authProviders[providerId]);
   const credential = literalKey ?? piAuthCredential(authEntry);
   // 过期的 OAuth 只提示重新登录，不代刷新（会轮换 refresh token）。
@@ -413,7 +427,7 @@ async function readPiLocal(ctx: PluginContext, home: string): Promise<LocalRoute
   if (!credential) {
     return {
       ...empty,
-      note: `pi: 供应商 ${providerId} 的凭证由环境变量或命令提供，插件读不到，未猜测余额`,
+      note: `pi: 供应商 ${providerId} 未找到可读的凭证（${modelsPath} / ${authPath}），未猜测余额`,
     };
   }
   return {
