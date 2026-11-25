@@ -296,6 +296,150 @@ async function readOpencodeLocal(ctx: PluginContext, home: string): Promise<Loca
   return { gateway: null, credential: null, credentialSource: "", source: path };
 }
 
+/**
+ * pi（@earendil-works/pi-coding-agent）把登录凭证放在 `<agentDir>/auth.json`，
+ * 自定义或代理网关放在 `<agentDir>/models.json`。宿主把该引擎标成
+ * `__local_settings_json__` 时，真实供应商只存在于 pi 自己的配置里；这里按
+ * pi 的文件解析，多个已登录供应商又没有 defaultProvider 时不猜账户。
+ */
+const PI_PROVIDER_GATEWAYS: Record<string, string> = {
+  anthropic: "https://api.anthropic.com",
+  deepseek: "https://api.deepseek.com",
+  openai: "https://api.openai.com/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta",
+  xai: "https://api.x.ai/v1",
+  groq: "https://api.groq.com/openai/v1",
+  mistral: "https://api.mistral.ai",
+  together: "https://api.together.ai/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  moonshotai: "https://api.moonshot.ai/v1",
+  "moonshotai-cn": "https://api.moonshot.cn/v1",
+  minimax: "https://api.minimax.io/anthropic",
+  "minimax-cn": "https://api.minimaxi.com/anthropic",
+  "kimi-coding": "https://api.kimi.com/coding/v1",
+  zai: "https://api.z.ai/api/coding/paas/v4",
+  "zai-coding-cn": "https://open.bigmodel.cn/api/coding/paas/v4",
+  "opencode-go": "https://opencode.ai/zen/go/v1",
+  "github-copilot": "https://api.individual.githubcopilot.com",
+  huggingface: "https://router.huggingface.co/v1",
+  nvidia: "https://integrate.api.nvidia.com/v1",
+  cerebras: "https://api.cerebras.ai/v1",
+  fireworks: "https://api.fireworks.ai/inference",
+  baseten: "https://inference.baseten.co/v1",
+  "vercel-ai-gateway": "https://ai-gateway.vercel.sh",
+  meta: "https://api.meta.ai/v1",
+  "ant-ling": "https://api.ant-ling.com/v1",
+  xiaomi: "https://api.xiaomimimo.com/v1",
+};
+
+/** auth.json 条目：`{ type: "api_key", key }` 或 `{ type: "oauth", access, expires }`。 */
+function piAuthCredential(entry: unknown): string | null {
+  const value = record(entry);
+  if (!value) return null;
+  return str(value.key) ?? str(value.access) ?? null;
+}
+
+type PiModelKey =
+  | { kind: "absent" }
+  | { kind: "literal"; value: string }
+  | { kind: "unreadable" };
+
+/** 显式但不可读的 apiKey 仍是凭证覆盖，不能当作缺失而回退到其他密钥。 */
+function piModelKey(entry: unknown): PiModelKey {
+  const model = record(entry);
+  if (!model || !Object.prototype.hasOwnProperty.call(model, "apiKey")) {
+    return { kind: "absent" };
+  }
+  const key = str(model.apiKey);
+  return key && !/^[$!]/.test(key)
+    ? { kind: "literal", value: key }
+    : { kind: "unreadable" };
+}
+
+async function readPiLocal(ctx: PluginContext, home: string): Promise<LocalRoute> {
+  const agentDir = joinPath(home, ".pi", "agent");
+  const settingsPath = joinPath(agentDir, "settings.json");
+  const modelsPath = joinPath(agentDir, "models.json");
+  const authPath = joinPath(agentDir, "auth.json");
+  const [settings, models, auth] = await Promise.all([
+    readJson(ctx, settingsPath),
+    readJson(ctx, modelsPath),
+    readJson(ctx, authPath),
+  ]);
+  const modelProviders = record(models?.providers) ?? {};
+  const authProviders = record(auth) ?? {};
+  const authIds = Object.keys(authProviders).filter((id) => piAuthCredential(authProviders[id]));
+  const customIds = Object.keys(modelProviders).filter(
+    (id) => piModelKey(modelProviders[id]).kind !== "absent",
+  );
+  const known = [...new Set([...authIds, ...customIds])];
+  const preferred = str(settings?.defaultProvider);
+  // 先确认供应商身份，再检查凭证；不可读的默认项不能让余额跳到另一个账户。
+  const providerId = preferred ?? (known.length === 1 ? known[0] : null);
+  const empty: LocalRoute = {
+    gateway: null,
+    credential: null,
+    credentialSource: "",
+    source: authPath,
+  };
+  if (!providerId) {
+    if (known.length > 1) {
+      return {
+        ...empty,
+        note: `pi: 有多个已登录供应商或已配置密钥的供应商（${known.join(" / ")}），无法确认当前会话供应商；可在 pi 里设置 defaultProvider 后再刷新`,
+      };
+    }
+    return { ...empty, note: `pi: 未在 ${authPath} 找到可用的登录凭证，未猜测余额` };
+  }
+  const model = record(modelProviders[providerId]);
+  const modelKey = piModelKey(model);
+  if (modelKey.kind === "unreadable") {
+    return {
+      ...empty,
+      source: modelsPath,
+      note: `pi: 供应商 ${providerId} 在 ${modelsPath} 的 apiKey 插件无法读取（环境变量、命令或无效值），未回退到登录凭证，未猜测余额`,
+    };
+  }
+  const literalKey = modelKey.kind === "literal" ? modelKey.value : null;
+  const authEntry = record(authProviders[providerId]);
+  const credential = literalKey ?? piAuthCredential(authEntry);
+  // 过期的 OAuth 只提示重新登录，不代刷新（会轮换 refresh token）。
+  if (
+    !literalKey &&
+    credential &&
+    authEntry?.type === "oauth" &&
+    typeof authEntry.expires === "number" &&
+    authEntry.expires <= Date.now()
+  ) {
+    return { ...empty, note: `pi: ${providerId} 的登录已过期（${authPath}），请在 pi 里重新登录` };
+  }
+  // 只用映射表自身的键，避免 providerId 撞上 Object 原型属性。
+  const builtin = Object.prototype.hasOwnProperty.call(PI_PROVIDER_GATEWAYS, providerId)
+    ? PI_PROVIDER_GATEWAYS[providerId]
+    : null;
+  const gateway = str(model?.baseUrl) ?? builtin ?? null;
+  if (!gateway) {
+    return {
+      ...empty,
+      note: `pi: 供应商 ${providerId} 的网关未知（不在内置列表，且 ${modelsPath} 没有可读的 baseUrl）`,
+    };
+  }
+  if (!credential) {
+    return {
+      ...empty,
+      note: `pi: 供应商 ${providerId} 未找到可读的凭证（${modelsPath} / ${authPath}），未猜测余额`,
+    };
+  }
+  return {
+    gateway,
+    credential,
+    credentialSource: literalKey
+      ? `${modelsPath} → providers.${providerId}.apiKey`
+      : `${authPath} → ${providerId}`,
+    source: literalKey ? modelsPath : authPath,
+  };
+}
+
 const LOCAL_READERS: Record<string, (ctx: PluginContext, home: string) => Promise<LocalRoute>> = {
   claude: readClaudeLocal,
   codex: readCodexLocal,
@@ -303,6 +447,7 @@ const LOCAL_READERS: Record<string, (ctx: PluginContext, home: string) => Promis
   grok: readGrokLocal,
   dsh: readDshLocal,
   opencode: readOpencodeLocal,
+  pi: readPiLocal,
 };
 
 /**

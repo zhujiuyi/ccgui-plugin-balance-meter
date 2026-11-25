@@ -13,7 +13,7 @@ CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与�
 - **详情面板**：供应商、计费方式、订阅计划、各额度窗口、查询地址与最近查询时间，可手动刷新。
 - **设置页**：当前路由详情、查询地址可手工修改、全部路由清单与诊断信息。
 - **自动刷新**：打开 CC GUI、切换标签 / 会话 / 引擎、每轮对话结束后自动更新。
-- **渠道识别**：自动读取 CC GUI 的自定义渠道，以及 claude、codex、kimi、grok、dsh、opencode
+- **渠道识别**：自动读取 CC GUI 的自定义渠道，以及 claude、codex、kimi、grok、dsh、opencode、pi
   等引擎的本地登录信息，不需要手工配置。
 
 ## 安装
@@ -54,7 +54,7 @@ CC GUI 插件：**按当前引擎实际在用的网关地址识别供应商与�
 
 | 供应商 | 网关域名 | 计费 | 能查到什么 |
 |---|---|---|---|
-| DeepSeek | api.deepseek.com | 按量 | 账户余额（含 dsh 命令行读到的 API Key） |
+| DeepSeek | api.deepseek.com | 按量 | 账户余额（含 pi / dsh 读到的 API Key） |
 | OpenRouter | openrouter.ai | 按量 | 本 Key 的额度上限与剩余；账户总额度需要 Management Key |
 | Moonshot / Kimi | api.moonshot.cn / .ai | 按量 | 账户余额 |
 | SiliconFlow | *.siliconflow.cn / .com | 按量 | 账户余额 |
@@ -117,6 +117,7 @@ Together、Google Gemini。
 | `~/.grok/auth.json` | Grok CLI 登录 |
 | `~/.dsh/.credentials.yaml` | DeepSeek Harness 的 API Key |
 | `~/.local/share/opencode/auth.json` | OpenCode 登录 |
+| `~/.pi/agent/settings.json`、`auth.json`、`models.json` | pi 的默认供应商、登录凭证与自定义 / 代理网关 |
 | `~/.amr/config.json` | Open Design 客户端登录 |
 
 ## 适用平台
@@ -135,9 +136,21 @@ Together、Google Gemini。
 - xAI 的团队余额在 Management API 中，需要额外的 management key 与 team id，插件不自动读取。
 - Open Design 的余额属于账户，需要本机安装并登录 Open Design 客户端；渠道里配置的网关 Key
   只能用于模型推理，不能查询账单。
-- pi / omp / qoder / agy 引擎暂未接入：凭证格式或登录方式暂不适合只读查询。
+- pi 引擎读取 `~/.pi/agent/settings.json`、`auth.json` 与 `models.json`。优先使用 `defaultProvider`；
+  未设置默认值时，只有登录凭证和自定义密钥配置合计指向唯一供应商才自动选择。
+- pi 的 `models.json` 显式配置 `$ENV` / `!命令` 或无效 `apiKey` 时，插件只提示凭证不可读，
+  不解析环境变量、不执行命令，也不回退到 `auth.json`；默认供应商的凭证缺失时不会改选其他账户。
+  仅未声明 `apiKey` 时才读取同一供应商的登录凭证；暂不支持非默认 `PI_CODING_AGENT_DIR`。
+- omp / qoder / agy 引擎暂未接入：凭证格式或登录方式暂不适合只读查询。
 
 ## 更新记录
+
+### 0.5.0
+
+- 新增 pi 引擎本地路由识别，支持内置供应商和 `models.json` 自定义 / 代理网关。
+- 修复显式动态密钥不可读时错误回退登录凭证的问题，避免把上游密钥发送到代理。
+- 默认供应商始终优先；凭证不可读或缺失时给出明确诊断，不再查询其他账户。
+- 补充凭证优先级、多供应商歧义和禁止错误网络请求的回归测试。
 
 ### 0.4.0
 
@@ -177,7 +190,8 @@ pnpm validate && pnpm validate:dist  # 本地预检，镜像市场 CI 的门槛
 
 本地调试：`pnpm build` 后从 `dist/` 目录安装；修改代码后重新构建并再次安装即可（宿主会热加载）。
 
-发版：更新 `manifest.json` 的 `version`，然后 `git tag <version> && git push origin <version>`。
+发版：同步更新 `manifest.json` 与 `package.json` 的 `version`，完成上述检查后，
+执行 `git tag <version> && git push origin <version>`。
 仓库的 GitHub Action 会构建并把 `main.js` / `manifest.json` / `checksums.txt` 附到 Release。
 
 展示素材由 manifest 的 `icon` / `screenshots` 声明，市场按仓库默认分支读取；图标源文件为
